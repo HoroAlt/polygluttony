@@ -46,6 +46,36 @@ pub fn remove_connection(cfg: &mut AppConfig, name: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// Rename a connection, preserving its settings and any `active` /
+/// `personalization` references that pointed at the old name.
+pub fn rename_connection(cfg: &mut AppConfig, old: &str, new: &str) -> AppResult<()> {
+    let new = new.trim();
+    if new.is_empty() {
+        return Err(AppError::Other("connection name cannot be empty".into()));
+    }
+    if old == new {
+        return Ok(());
+    }
+    if !cfg.connections.contains_key(old) {
+        return Err(AppError::Other(format!("unknown connection: {old}")));
+    }
+    if cfg.connections.contains_key(new) {
+        return Err(AppError::Other(format!(
+            "a connection named '{new}' already exists"
+        )));
+    }
+    if let Some(conn) = cfg.connections.remove(old) {
+        cfg.connections.insert(new.to_string(), conn);
+    }
+    if cfg.active_connection == old {
+        cfg.active_connection = new.to_string();
+    }
+    if cfg.personalization_model.as_deref() == Some(old) {
+        cfg.personalization_model = Some(new.to_string());
+    }
+    Ok(())
+}
+
 /// First-run check (O21): any connection carrying a non-empty api_key.
 pub fn has_usable_connection(cfg: &AppConfig) -> bool {
     cfg.connections.values().any(|c| !c.api_key.trim().is_empty())
@@ -114,6 +144,23 @@ mod tests {
         // A non-active one is removable.
         assert!(remove_connection(&mut cfg, "google").is_ok());
         assert!(!cfg.connections.contains_key("google"));
+    }
+
+    #[test]
+    fn rename_moves_entry_and_updates_references() {
+        let mut cfg = default_config(); // active=anthropic, personalization=openai
+        // Rename the active connection: the active reference follows.
+        rename_connection(&mut cfg, "anthropic", "claude").unwrap();
+        assert!(!cfg.connections.contains_key("anthropic"));
+        assert!(cfg.connections.contains_key("claude"));
+        assert_eq!(cfg.active_connection, "claude");
+        // Rename the personalization connection: that reference follows too.
+        rename_connection(&mut cfg, "openai", "gpt").unwrap();
+        assert_eq!(cfg.personalization_model.as_deref(), Some("gpt"));
+        // Collisions and empty names are rejected; same-name is a no-op.
+        assert!(rename_connection(&mut cfg, "google", "claude").is_err());
+        assert!(rename_connection(&mut cfg, "google", "  ").is_err());
+        assert!(rename_connection(&mut cfg, "google", "google").is_ok());
     }
 
     #[test]

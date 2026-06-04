@@ -57,6 +57,13 @@ pub fn delete_connection(app: AppHandle, name: String) -> AppResult<()> {
 }
 
 #[tauri::command]
+pub fn rename_connection(app: AppHandle, old: String, new: String) -> AppResult<()> {
+    let mut cfg = store::load(&app)?;
+    store::rename_connection(&mut cfg, &old, &new)?;
+    store::save(&app, &cfg)
+}
+
+#[tauri::command]
 pub fn set_active_connection(app: AppHandle, name: String) -> AppResult<()> {
     let mut cfg = store::load(&app)?;
     store::set_active(&mut cfg, &name)?;

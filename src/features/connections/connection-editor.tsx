@@ -29,6 +29,17 @@ const EMPTY: Connection = {
   thinking_glossary_norm_budget: null,
 } as unknown as Connection;
 
+/**
+ * Infer which provider preset a saved connection came from, by matching its
+ * base URL. Anything that doesn't match a known preset is treated as Custom.
+ */
+function matchPresetKey(conn: Connection, presets: Preset[]): string {
+  const hit = presets.find(
+    (p) => p.key !== "custom" && p.base_url !== "" && p.base_url === conn.base_url,
+  );
+  return hit ? hit.key : "custom";
+}
+
 export function ConnectionEditor({
   name,
   initial,
@@ -39,6 +50,7 @@ export function ConnectionEditor({
   onSetActive,
   onSetPersonalization,
   onRemove,
+  onRename,
   onTest,
   onListModels,
 }: {
@@ -51,6 +63,7 @@ export function ConnectionEditor({
   onSetActive: (name: string) => void;
   onSetPersonalization: (name: string) => void;
   onRemove: (name: string) => void;
+  onRename: (oldName: string, newName: string) => Promise<void> | void;
   onTest: (c: Connection) => Promise<TestResult>;
   onListModels: (c: Connection) => Promise<string[]>;
 }) {
@@ -59,9 +72,12 @@ export function ConnectionEditor({
   });
   useEffect(() => {
     reset(initial ?? EMPTY);
-    setPresetKey("");
-  }, [initial, name, reset]);
+    setPresetKey(initial ? matchPresetKey(initial, presets) : "");
+    // Synthetic "new-*" selections start with an empty (user-supplied) name.
+    setConnName(name.startsWith("new-") ? "" : name);
+  }, [initial, name, reset, presets]);
 
+  const [connName, setConnName] = useState<string>("");
   const [presetKey, setPresetKey] = useState<string>("");
   const [revealKey, setRevealKey] = useState(false);
   const [testState, setTestState] = useState<"idle" | "testing" | TestResult>("idle");
@@ -113,9 +129,30 @@ export function ConnectionEditor({
   return (
     <form
       className="flex flex-1 flex-col"
-      onSubmit={handleSubmit((c) => onSave(name, { ...c, prompt_template: null }))}
+      onSubmit={handleSubmit(async (c) => {
+        const finalName = connName.trim();
+        if (!finalName) return;
+        const conn = { ...c, prompt_template: null } as Connection;
+        // Renaming an existing connection moves the entry (and its active /
+        // personalization references) before we persist the edited fields.
+        if (!name.startsWith("new-") && finalName !== name) {
+          await onRename(name, finalName);
+        }
+        await onSave(finalName, conn);
+      })}
     >
       <div className="flex-1 space-y-1 overflow-auto p-4">
+        <SetupField
+          label="Name"
+          help={<HelpText>A label for this connection (e.g. “work” or “z.ai”).</HelpText>}
+        >
+          <Input
+            value={connName}
+            onChange={(e) => setConnName(e.target.value)}
+            placeholder="my-connection"
+          />
+        </SetupField>
+
         <SetupField
           label="Provider"
           help={
@@ -271,7 +308,9 @@ export function ConnectionEditor({
             Set as active
           </Button>
         ) : null}
-        <Button type="submit">Save</Button>
+        <Button type="submit" disabled={!connName.trim()}>
+          Save
+        </Button>
       </div>
     </form>
   );

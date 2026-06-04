@@ -59,6 +59,10 @@ export function ConnectionsPage() {
               m.remove.mutate(name);
               setSelected(null);
             }}
+            onRename={async (oldName, newName) => {
+              await m.rename.mutateAsync({ oldName, newName });
+              setSelected(newName);
+            }}
             onTest={(c) => m.test.mutateAsync(c)}
             onListModels={(c) => m.listModels.mutateAsync(c)}
           />

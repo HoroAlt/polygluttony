@@ -44,6 +44,7 @@ pub fn run() {
             commands::read_connection,
             commands::save_connection,
             commands::delete_connection,
+            commands::rename_connection,
             commands::set_active_connection,
             commands::set_personalization_connection,
             commands::first_run_status,

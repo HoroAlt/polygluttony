@@ -43,6 +43,11 @@ export function useConnectionMutations() {
       onSuccess: invalidate,
     }),
     remove: useMutation({ mutationFn: ipc.deleteConnection, onSuccess: invalidate }),
+    rename: useMutation({
+      mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) =>
+        ipc.renameConnection(oldName, newName),
+      onSuccess: invalidate,
+    }),
     setActive: useMutation({ mutationFn: ipc.setActiveConnection, onSuccess: invalidate }),
     setPersonalization: useMutation({
       mutationFn: ipc.setPersonalizationConnection,

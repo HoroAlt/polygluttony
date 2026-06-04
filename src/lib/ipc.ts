@@ -27,6 +27,9 @@ export const ipc = {
     invoke<void>("save_connection", { name, connection }),
   /** O4 — remove a connection (fails if it is the active one). */
   deleteConnection: (name: string) => invoke<void>("delete_connection", { name }),
+  /** Rename a connection, preserving active/personalization references. */
+  renameConnection: (oldName: string, newName: string) =>
+    invoke<void>("rename_connection", { old: oldName, new: newName }),
   /** O2 — set the active connection. */
   setActiveConnection: (name: string) => invoke<void>("set_active_connection", { name }),
   /** Set the personalization (web-lookup) connection. */
