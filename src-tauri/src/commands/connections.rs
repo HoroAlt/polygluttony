@@ -7,6 +7,7 @@ use crate::config::store;
 use crate::config::{AppConfig, Connection, Driver};
 use crate::error::{AppError, AppResult};
 use crate::llm::detect::detect_format;
+use crate::llm::error::LlmError;
 use crate::llm::create_driver;
 use crate::models::{ConnectionSummary, ConnectionsView, FirstRunStatus, TestResult};
 
@@ -130,7 +131,10 @@ pub async fn test_connection(connection: Connection) -> AppResult<TestResult> {
     let model = probe.model.clone();
     let client = create_driver(probe);
     match client.complete("Reply with OK.", "ping").await {
-        Ok(_) => {
+        // A 200 response with empty content still proves the key + model are
+        // valid — some reasoning models (e.g. GLM via z.ai) emit no text within
+        // the tiny probe budget. A connectivity test treats that as success.
+        Ok(_) | Err(LlmError::Empty) => {
             let msg = match detected {
                 Some(d) => format!("✓ Detected {} — responded as {model}", driver_label(d)),
                 None => format!("✓ Connection works — responded as {model}"),
