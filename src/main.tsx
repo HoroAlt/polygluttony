@@ -1,5 +1,4 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
 import React from "react";
 import ReactDOM from "react-dom/client";
@@ -40,7 +39,6 @@ ReactDOM.createRoot(rootElement).render(
           <RouterProvider router={router} />
           <Toaster richColors position="bottom-right" />
         </TooltipProvider>
-        <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" />
       </QueryClientProvider>
     </ThemeProvider>
   </React.StrictMode>,
