@@ -3,6 +3,7 @@
 
 pub mod languages;
 pub mod presets;
+pub mod projects;
 pub mod store;
 
 use std::collections::BTreeMap;
