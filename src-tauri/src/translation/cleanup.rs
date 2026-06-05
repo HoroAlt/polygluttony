@@ -55,6 +55,10 @@ pub async fn cleanup_pass(
             // pointless. Stop early and report the lines as failed.
             BatchOutcome::Fatal(_) => break,
         };
+        // Track which ids the LLM actually returned so that unreturned ids
+        // (silently omitted in a Partial response) are kept dirty rather than
+        // quietly dropping off the retry list.
+        let returned: std::collections::BTreeSet<u32> = map.keys().copied().collect();
         let mut still_dirty = Vec::new();
         for (id, text) in map {
             if detector.needs_cleanup(&text) {
@@ -64,7 +68,9 @@ pub async fn cleanup_pass(
                 cleaned.push(id);
             }
         }
-        dirty.retain(|id| still_dirty.contains(id));
+        // Keep an id dirty when: the LLM returned it but it still needs
+        // cleanup (still_dirty), OR the LLM never returned it at all.
+        dirty.retain(|id| still_dirty.contains(id) || !returned.contains(id));
         if dirty.is_empty() {
             break;
         }
@@ -149,6 +155,34 @@ mod tests {
         assert_eq!(report.failed, vec![1]);
         // Dirty re-translations are never merged.
         assert_eq!(translations.get(&1).unwrap(), "全是中文的翻译");
+        assert_eq!(driver.call_count(), MAX_CLEANUP_ITERATIONS);
+    }
+
+    #[tokio::test]
+    async fn partial_response_keeps_unreturned_id_dirty_until_failed() {
+        // Two dirty lines (ids 1 and 2). The scripted LLM returns only id 1
+        // (clean) in every iteration, never mentioning id 2. Without the fix,
+        // id 2 silently vanishes; with the fix it stays dirty and ends up in
+        // `failed` once iterations exhaust.
+        let clean_only_id1 =
+            || Ok::<_, crate::llm::error::LlmError>(r#"[{"id":1,"tgt":"<0001:D> Clean now"}]"#.to_string());
+        // Supply MAX_CLEANUP_ITERATIONS responses; id 2 is never returned.
+        let responses: Vec<_> = (0..MAX_CLEANUP_ITERATIONS).map(|_| clean_only_id1()).collect();
+        let (svc, driver) = service(responses);
+        let sources: BTreeMap<u32, String> =
+            [(1, "你好".to_string()), (2, "再见".to_string())].into();
+        let mut translations: BTreeMap<u32, String> = [
+            (1, "你好 leftover 中文".to_string()),
+            (2, "再见 leftover 中文".to_string()),
+        ]
+        .into();
+        let report =
+            cleanup_pass(&svc, &zh(), &sources, &mut translations, &Glossary::default(), &settings())
+                .await;
+        // Id 1 was returned clean — cleaned.
+        assert!(report.cleaned.contains(&1), "id 1 should be cleaned");
+        // Id 2 was never returned — must appear in failed, not silently dropped.
+        assert!(report.failed.contains(&2), "id 2 must be in failed (unreturned)");
         assert_eq!(driver.call_count(), MAX_CLEANUP_ITERATIONS);
     }
 

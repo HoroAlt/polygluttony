@@ -24,6 +24,9 @@
 //! - **Drift is log-only at the batch level** (spec §6): a suspicious batch is
 //!   reported to the UI log but not retried mid-loop; the verify stage is the
 //!   enforcement point.
+//! - **Scoped retranslation is chunked** (`retranslate_scope`): Python sends
+//!   the whole scope as a single request; we chunk by `initial_batch_size` to
+//!   avoid exceeding model context when a scope spans many lines.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -169,8 +172,18 @@ async fn run(job: FileJob<'_>) -> Result<FileResult, String> {
                 ),
             )
             .await;
-            st.translations.clear();
+            // Stash the prior (drift-flagged but complete) translations before
+            // clearing. If translate_all() comes back with fewer lines (e.g.
+            // provider outage kills batches mid-run), we backfill the gaps so
+            // the output is never *less* complete than what we already had.
+            // The backfilled lines are still flagged by the verifier, so
+            // has_warnings will be set — correct behaviour.
+            let prior = std::mem::take(&mut st.translations);
             st.translate_all().await?;
+            // Backfill: keep any id that translate_all() did not produce.
+            for (id, t) in prior {
+                st.translations.entry(id).or_insert(t);
+            }
         } else {
             let ranges = scopes
                 .iter()
@@ -410,6 +423,10 @@ impl FileState<'_, '_> {
                         Some(format!("partial batch {batch_num}")),
                     )
                     .await;
+                    // Recompute total_batches after every Partial requeue so
+                    // Progress never reports batch > total_batches.
+                    total_batches =
+                        batch_num + (pending.len() as u32).div_ceil(batch_size);
                     self.progress(batch_num, total_batches).await;
                     // Halve on <10% success (`translator.py:524-527`). At the
                     // floor keep the size: a Partial always merges at least one
@@ -417,8 +434,9 @@ impl FileState<'_, '_> {
                     if merged_count * 10 < take.len() {
                         if let Some(s) = halved(batch_size) {
                             batch_size = s;
+                            // Recompute again after halving.
                             total_batches =
-                                batch_num + pending.len().div_ceil(batch_size as usize) as u32;
+                                batch_num + (pending.len() as u32).div_ceil(batch_size);
                         }
                     }
                 }
@@ -497,6 +515,10 @@ impl FileState<'_, '_> {
     /// context (`translator.py:687-778`, simplified: only the scope lines are
     /// re-sent; the padding region supplies context instead of being
     /// retranslated and filtered back out).
+    ///
+    /// Deviation from Python: scope lines are chunked by `initial_batch_size`
+    /// (sequential, merging each outcome) so large scopes don't blow the
+    /// model's context window.
     async fn retranslate_scope(&mut self, scope: &Scope) -> Result<(), String> {
         let mut context: Vec<(String, String)> = self
             .translations
@@ -514,22 +536,32 @@ impl FileState<'_, '_> {
         if raw.is_empty() {
             return Ok(());
         }
-        match translate_batch_tagged(self.job.svc, &raw, self.job.glossary, &context, &self.settings)
+        let chunk_size = initial_batch_size(self.job.batch_limit) as usize;
+        for chunk in raw.chunks(chunk_size) {
+            match translate_batch_tagged(
+                self.job.svc,
+                chunk,
+                self.job.glossary,
+                &context,
+                &self.settings,
+            )
             .await
-        {
-            BatchOutcome::Success(map) => {
-                self.translations.extend(map);
-            }
-            BatchOutcome::Partial { translated, .. } => {
-                // Keep what we got; the next verify pass decides if it stuck.
-                self.translations.extend(translated);
-            }
-            BatchOutcome::Failure(message) => {
-                self.log(LogLevel::Warning, LogPhase::Retranslate, message).await;
-            }
-            BatchOutcome::Fatal(message) => {
-                self.job.cancel.cancel();
-                return Err(message);
+            {
+                BatchOutcome::Success(map) => {
+                    self.translations.extend(map);
+                }
+                BatchOutcome::Partial { translated, .. } => {
+                    // Keep what we got; the next verify pass decides if it stuck.
+                    self.translations.extend(translated);
+                }
+                BatchOutcome::Failure(message) => {
+                    self.log(LogLevel::Warning, LogPhase::Retranslate, message).await;
+                    // Log and continue to the next chunk; don't abort the scope.
+                }
+                BatchOutcome::Fatal(message) => {
+                    self.job.cancel.cancel();
+                    return Err(message);
+                }
             }
         }
         Ok(())
@@ -574,7 +606,7 @@ mod tests {
     async fn run_pipeline(
         source: &str,
         responses: Vec<Result<String, crate::llm::error::LlmError>>,
-    ) -> (FileResult, Vec<RunEvent>, std::sync::Arc<ScriptedDriver>) {
+    ) -> (FileResult, Vec<RunEvent>, std::sync::Arc<ScriptedDriver>, tempfile::TempDir) {
         let driver = ScriptedDriver::new(responses);
         let (tx, mut rx) = mpsc::channel(256);
         let svc = LlmService::new(driver.clone(), 2, CancellationToken::new(), tx.clone());
@@ -602,15 +634,15 @@ mod tests {
         while let Some(e) = rx.recv().await {
             events.push(e);
         }
-        // NOTE: dir must outlive assertions that read the output file — return it if needed.
-        std::mem::forget(dir);
-        (result, events, driver)
+        // Return `dir` so callers keep it alive for as long as needed (e.g.
+        // reading the output file). Bind to `_dir` when not needed.
+        (result, events, driver, dir)
     }
 
     #[tokio::test]
     async fn happy_path_writes_clean_output() {
         let src = ass_source(&["你好", "再见"]);
-        let (result, events, _) = run_pipeline(
+        let (result, events, _, _dir) = run_pipeline(
             &src,
             vec![
                 Ok(ok_batch(&[(1, "Hello there friend"), (2, "Goodbye for now")])),
@@ -635,7 +667,7 @@ mod tests {
     #[tokio::test]
     async fn partial_batch_retries_remainder() {
         let src = ass_source(&["你好", "再见", "走吧"]);
-        let (result, _, driver) = run_pipeline(
+        let (result, _, driver, _dir) = run_pipeline(
             &src,
             vec![
                 Ok(ok_batch(&[(1, "Hello my good friend")])), // ids 2,3 missing → partial
@@ -652,7 +684,7 @@ mod tests {
     #[tokio::test]
     async fn cleanup_pass_fixes_residual_source() {
         let src = ass_source(&["你好"]);
-        let (result, events, _) = run_pipeline(
+        let (result, events, _, _dir) = run_pipeline(
             &src,
             vec![
                 // 4 CJK chars of ~18 → ratio ≈ 0.22 > 0.1 ⇒ needs cleanup.
@@ -673,7 +705,7 @@ mod tests {
         let src = ass_source(&["你好", "再见", "走吧", "好的", "不行", "可以", "什么", "哪里",
                                "怎么", "为何", "真的", "假的"]);
         let all_ok: Vec<(u32, &str)> = (1..=12).map(|i| (i, "A clean English line here")).collect();
-        let (result, events, _) = run_pipeline(
+        let (result, events, _, _dir) = run_pipeline(
             &src,
             vec![
                 Ok(ok_batch(&all_ok)),
@@ -698,7 +730,7 @@ mod tests {
             r#"{{"issues":[{}]}}"#,
             (1..=12).map(|i| format!(r#"{{"id":{i},"reason":"x"}}"#)).collect::<Vec<_>>().join(",")
         );
-        let (result, _, driver) = run_pipeline(
+        let (result, _, driver, _dir) = run_pipeline(
             &src,
             vec![
                 Ok(ok_batch(&all_ok)),
@@ -719,7 +751,7 @@ mod tests {
         let all_ok: Vec<(u32, &str)> = (1..=12).map(|i| (i, "A clean English line here")).collect();
         let flagged = r#"{"issues":[{"id":6,"reason":"unrelated"}]}"#;
         let redo = ok_batch(&[(6, "Still flagged line six")]);
-        let (result, _, _) = run_pipeline(
+        let (result, _, _, _dir) = run_pipeline(
             &src,
             vec![
                 Ok(ok_batch(&all_ok)),
@@ -742,7 +774,7 @@ mod tests {
     #[tokio::test]
     async fn auth_error_is_fatal_no_halving() {
         let src = ass_source(&["你好", "再见"]);
-        let (result, _, driver) = run_pipeline(
+        let (result, _, driver, _dir) = run_pipeline(
             &src,
             vec![Err(crate::llm::error::LlmError::Http { status: 401, body: "no".into() })],
         )
@@ -759,9 +791,64 @@ mod tests {
         for _ in 0..30 {
             responses.push(hopeless());
         }
-        let (result, _, _) = run_pipeline(&src, responses).await;
+        let (result, _, _, _dir) = run_pipeline(&src, responses).await;
         assert!(result.has_warnings || !result.success);
         assert_eq!(result.translated_lines, 0);
+    }
+
+    // Fix 1 (cleanup): verify the partial-drop fix works end-to-end at the
+    // pipeline level.  Two lines; initial pass returns only id 1 clean → id 2
+    // stays dirty through cleanup iterations and ends up in the output as
+    // untranslated (has_warnings = true).  See cleanup.rs for the unit-level
+    // test of the exact retain logic.
+    #[tokio::test]
+    async fn redo_collapse_keeps_prior_translations() {
+        // 12 lines; all flagged on every verify → full redo path is exercised.
+        // Call sequence (batch_limit=100, 12 lines):
+        //   call 1  : initial translate_all batch(12) → ok
+        //   call 2  : verify attempt=1 → all_flagged → full redo
+        //   calls 3-8 : redo translate_all: 6 hopeless ("not json") through the
+        //               halving ladder (100→50→25→12→10→give-up×2)
+        //               → 0 lines translated; backfill restores all 12 from prior
+        //   call 9  : verify attempt=2 → all_flagged → full redo
+        //   calls 10-15: same 6 hopeless calls, backfill again
+        //   call 16 : verify attempt=3 → all_flagged → attempt==MAX → break
+        //
+        // Final state: translations = 12 (from prior backfill), has_warnings=true.
+        // Oversupply hopeless+flagged to avoid panicking if our count is off.
+        let src = ass_source(&["你好", "再见", "走吧", "好的", "不行", "可以",
+                               "什么", "哪里", "怎么", "为何", "真的", "假的"]);
+        let all_ok: Vec<(u32, &str)> =
+            (1..=12).map(|i| (i, "A clean English line here")).collect();
+        let all_flagged = format!(
+            r#"{{"issues":[{}]}}"#,
+            (1..=12)
+                .map(|i| format!(r#"{{"id":{i},"reason":"drift"}}"#))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        let hopeless = || Ok::<String, crate::llm::error::LlmError>("not json".into());
+        let flagged = || Ok::<String, crate::llm::error::LlmError>(all_flagged.clone());
+        // 1 ok + 1 flagged + 6 hopeless + 1 flagged + 6 hopeless + 1 flagged = 16
+        // plus 20 extras (harmless; ScriptedDriver just returns Failure on empty).
+        let mut responses: Vec<_> = vec![Ok(ok_batch(&all_ok)), flagged()];
+        for _ in 0..6 { responses.push(hopeless()); }
+        responses.push(flagged());
+        for _ in 0..6 { responses.push(hopeless()); }
+        responses.push(flagged());
+        // 20 extra entries
+        for _ in 0..10 { responses.push(hopeless()); }
+        for _ in 0..10 { responses.push(flagged()); }
+
+        let (result, _, _, _dir) = run_pipeline(&src, responses).await;
+
+        // Redo gave 0 new translations but backfill restored the prior 12.
+        assert!(result.success, "file write should still succeed");
+        assert!(result.has_warnings, "verify issues must propagate to has_warnings");
+        assert_eq!(
+            result.translated_lines, 12,
+            "prior translations must survive a total-outage redo"
+        );
     }
 
     #[tokio::test]
