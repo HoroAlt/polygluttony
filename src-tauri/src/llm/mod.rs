@@ -16,6 +16,9 @@ pub mod openai_responses;
 pub mod sse;
 pub mod service;
 
+#[cfg(test)]
+pub mod test_support;
+
 use async_trait::async_trait;
 use reqwest::header::HeaderMap;
 use serde_json::Value;
