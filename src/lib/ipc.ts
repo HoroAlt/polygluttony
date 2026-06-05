@@ -73,7 +73,7 @@ export const ipc = {
     tone: Tone
     sourceLang: string
     targetLang: string
-  }) => invoke<void>("start_translation", { ...args, now: Date.now() }),
+  }) => invoke<void>("start_translation", { ...args, now: Math.floor(Date.now() / 1000) }),
   /** O17 — cancel the active run. */
   cancelTranslation: () => invoke<void>("cancel_translation"),
 };

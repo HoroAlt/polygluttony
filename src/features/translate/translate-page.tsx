@@ -128,12 +128,22 @@ export function TranslatePage() {
 
   const handleStart = () => {
     useTranslationRun.getState().start(selected);
-    void ipc.startTranslation({
+    ipc.startTranslation({
       folder: workdir,
       files: selected,
       tone,
       sourceLang,
       targetLang,
+    }).catch((err: unknown) => {
+      const store = useTranslationRun.getState();
+      store.reset();
+      store.applyEvent({
+        kind: "log",
+        file: null,
+        level: "error",
+        phase: "error",
+        message: err instanceof Error ? err.message : String(err),
+      });
     });
   };
 
