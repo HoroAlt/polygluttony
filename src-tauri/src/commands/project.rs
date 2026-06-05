@@ -129,6 +129,9 @@ pub async fn open_folder(app: AppHandle, path: String, now: i64) -> AppResult<Pr
     projects::record_recent(&mut projects_cfg, &path, analyzed.files.len() as u32, now);
     projects::save(&app, &projects_cfg)?;
 
+    let glossary_terms =
+        crate::glossary::io::load_folder_glossary(&dir).map(|g| g.count() as u32);
+
     Ok(ProjectView {
         folder: path,
         total_dialogue_lines: analyzed.files.iter().map(|f| f.dialogue_count).sum(),
@@ -137,6 +140,7 @@ pub async fn open_folder(app: AppHandle, path: String, now: i64) -> AppResult<Pr
         detected_world,
         prefs,
         supports_glossary,
+        glossary_terms,
     })
 }
 
