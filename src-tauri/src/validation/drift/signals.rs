@@ -8,10 +8,6 @@ use crate::validation::LinePair;
 
 pub type Signal = (f64, Option<u32>, BTreeSet<u32>);
 
-fn ends_with_any(s: &str, set: &[char]) -> bool {
-    s.trim_end().chars().last().map(|c| set.contains(&c)).unwrap_or(false)
-}
-
 fn char_len(s: &str) -> usize {
     s.chars().count()
 }
@@ -48,12 +44,11 @@ fn english_punct(text: &str) -> Option<PunctType> {
     if t.is_empty() {
         return None;
     }
-    // Two-char combo check
-    if t.len() >= 2 {
-        let last_two: String = t.chars().rev().take(2).collect::<String>().chars().rev().collect();
-        if last_two == "?!" || last_two == "!?" {
-            return Some(PunctType::Question);
-        }
+    // Two-char combo check — allocation-free via char iterator
+    let mut rev = t.chars().rev();
+    let (a, b) = (rev.next(), rev.next());
+    if matches!((b, a), (Some('?'), Some('!')) | (Some('!'), Some('?'))) {
+        return Some(PunctType::Question);
     }
     match t.chars().last()? {
         '?' => Some(PunctType::Question),
@@ -118,16 +113,23 @@ pub fn glossary_position(pairs: &[LinePair], terms: &BTreeMap<String, String>) -
         return (0.0, None, BTreeSet::new());
     }
 
+    // Precompute lowercased translations once — avoids repeated allocation inside the inner loop.
+    let terms_lower: Vec<(&String, String)> = terms
+        .iter()
+        .map(|(term, tr)| (term, tr.to_lowercase()))
+        .collect();
+
     let mut violations = 0usize;
     let mut checks = 0usize;
     let mut first: Option<u32> = None;
     let mut flagged = BTreeSet::new();
 
     for p in pairs {
-        for (term, tr) in terms {
+        let tgt_lower = p.tgt.to_lowercase();
+        for (term, tr_lower) in &terms_lower {
             if p.src.contains(term.as_str()) {
                 checks += 1;
-                if !p.tgt.to_lowercase().contains(&tr.to_lowercase()) {
+                if !tgt_lower.contains(tr_lower.as_str()) {
                     violations += 1;
                     first.get_or_insert(p.id);
                     flagged.insert(p.id);
@@ -239,17 +241,25 @@ pub fn sentence_type(pairs: &[LinePair]) -> Signal {
 /// - Length ratio outside [0.5, 5.0]: +0.3 (uses `len()` i.e. char count)
 /// - Empty translation: score = 1.0 (overrides, then capped at 1.0)
 ///
-/// Note: If the last ID is missing from translations, Python returns score=0.5.
+/// (Python had a missing-translation fallback of 0.5; our LinePair model always
+/// provides both sides so the case cannot arise here.)
 pub fn last_line(pairs: &[LinePair], terms: &BTreeMap<String, String>) -> Signal {
     let Some(p) = pairs.iter().max_by_key(|p| p.id) else {
         return (0.0, None, BTreeSet::new());
     };
 
+    // Precompute lowercased translations once — avoids repeated allocation inside the loop.
+    let terms_lower: Vec<(&String, String)> = terms
+        .iter()
+        .map(|(term, tr)| (term, tr.to_lowercase()))
+        .collect();
+
     let mut score = 0.0f64;
 
     // Check 1: glossary term presence — ALL matching terms, not just the first
-    for (term, tr) in terms {
-        if p.src.contains(term.as_str()) && !p.tgt.to_lowercase().contains(&tr.to_lowercase()) {
+    let tgt_lower = p.tgt.to_lowercase();
+    for (term, tr_lower) in &terms_lower {
+        if p.src.contains(term.as_str()) && !tgt_lower.contains(tr_lower.as_str()) {
             score += 0.3;
         }
     }
@@ -262,7 +272,7 @@ pub fn last_line(pairs: &[LinePair], terms: &BTreeMap<String, String>) -> Signal
     if source_len > 0 {
         // Python: ratio = trans_len / source_len — no special case for trans_len==0
         let ratio = trans_len as f64 / source_len as f64;
-        if ratio < 0.5 || ratio > 5.0 {
+        if !(0.5..=5.0).contains(&ratio) {
             score += 0.3;
         }
     }
@@ -307,7 +317,7 @@ pub fn length_ratio(pairs: &[LinePair]) -> Signal {
         let tl = char_len(p.tgt.trim());
         // When tl==0, ratio = 0.0 < MIN_RATIO — Python flags this.
         let ratio = tl as f64 / sl as f64;
-        if ratio < MIN_RATIO || ratio > MAX_RATIO {
+        if !(MIN_RATIO..=MAX_RATIO).contains(&ratio) {
             anomalies += 1;
             first.get_or_insert(p.id);
             flagged.insert(p.id);
