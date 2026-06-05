@@ -3,17 +3,18 @@
 //! Ports the Python `llm/` package: a driver abstraction over the Anthropic,
 //! OpenAI Chat Completions, and OpenAI Responses APIs, built on `reqwest`.
 //!
-//! Step 1 implements only the one-shot [`LlmDriver::complete`] path plus a
+//! Step 1 implements the one-shot [`LlmDriver::complete`] path plus a
 //! `/models` listing — enough to power connection testing, model autocomplete,
-//! and Custom API-format detection. Streaming (Anthropic extended thinking),
-//! the thinking-budget multiplier, and debug request/response logging arrive
-//! with the translation step.
+//! and Custom API-format detection. Step 3 adds [`LlmDriver::stream`] for the
+//! translation pipeline (avoids idle-timeouts on long batches).
 
 pub mod anthropic;
 pub mod detect;
 pub mod error;
 pub mod openai;
 pub mod openai_responses;
+pub mod sse;
+pub mod service;
 
 use async_trait::async_trait;
 use reqwest::header::HeaderMap;
@@ -22,11 +23,33 @@ use serde_json::Value;
 use crate::config::{Connection, Driver};
 use error::LlmError;
 
-/// A provider driver: a one-shot completion + a model list. (Streaming et al.
-/// arrive with the translation step.)
+/// One streaming-capable request.
+#[derive(Debug, Clone)]
+pub struct LlmRequest {
+    pub system: String,
+    pub user: String,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Usage {
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LlmResponse {
+    pub text: String,
+    pub usage: Usage,
+}
+
+/// A provider driver: one-shot completion, streamed completion, and a model
+/// list.
 #[async_trait]
 pub trait LlmDriver: Send + Sync {
     async fn complete(&self, system: &str, user: &str) -> Result<String, LlmError>;
+    /// Streamed completion, accumulated to a full response. Used by the whole
+    /// translation pipeline — avoids provider idle-timeouts on long batches.
+    async fn stream(&self, req: &LlmRequest) -> Result<LlmResponse, LlmError>;
     async fn list_models(&self) -> Result<Vec<String>, LlmError>;
     fn model(&self) -> &str;
 }

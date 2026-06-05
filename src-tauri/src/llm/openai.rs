@@ -4,10 +4,12 @@
 use async_trait::async_trait;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde_json::{json, Value};
+use std::time::Duration;
 
 use crate::config::Connection;
 use crate::llm::error::LlmError;
-use crate::llm::{base_of, get_json, parse_model_ids, post_json, timeout_of, LlmDriver};
+use crate::llm::{base_of, get_json, parse_model_ids, post_json, timeout_of, LlmDriver, LlmRequest, LlmResponse, Usage};
+use crate::llm::sse;
 
 pub struct OpenAiDriver {
     conn: Connection,
@@ -16,7 +18,11 @@ pub struct OpenAiDriver {
 
 impl OpenAiDriver {
     pub fn new(conn: Connection) -> Self {
-        Self { conn, client: reqwest::Client::new() }
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(conn.connect_timeout.unwrap_or(10) as u64))
+            .build()
+            .unwrap_or_default();
+        Self { conn, client }
     }
 
     fn headers(&self) -> HeaderMap {
@@ -27,20 +33,25 @@ impl OpenAiDriver {
         }
         h
     }
-}
 
-#[async_trait]
-impl LlmDriver for OpenAiDriver {
-    async fn complete(&self, system: &str, user: &str) -> Result<String, LlmError> {
-        let url = format!("{}/chat/completions", base_of(&self.conn));
-        let body = json!({
+    /// Build the base request body shared by `complete` and `stream`.
+    fn build_body(&self, system: &str, user: &str) -> Value {
+        json!({
             "model": self.conn.model,
             "max_tokens": self.conn.max_tokens.unwrap_or(8192),
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-        });
+        })
+    }
+}
+
+#[async_trait]
+impl LlmDriver for OpenAiDriver {
+    async fn complete(&self, system: &str, user: &str) -> Result<String, LlmError> {
+        let url = format!("{}/chat/completions", base_of(&self.conn));
+        let body = self.build_body(system, user);
         let data = post_json(&self.client, &url, self.headers(), &body, timeout_of(&self.conn)).await?;
         let text = data
             .pointer("/choices/0/message/content")
@@ -51,6 +62,35 @@ impl LlmDriver for OpenAiDriver {
             return Err(LlmError::Empty);
         }
         Ok(text)
+    }
+
+    async fn stream(&self, req: &LlmRequest) -> Result<LlmResponse, LlmError> {
+        let mut body = self.build_body(&req.system, &req.user);
+        body["stream"] = serde_json::Value::Bool(true);
+        body["stream_options"] = json!({"include_usage": true});
+        let mut text = String::new();
+        let mut usage = Usage::default();
+        sse::post_sse(
+            &self.client,
+            &format!("{}/chat/completions", base_of(&self.conn)),
+            self.headers(),
+            &body,
+            timeout_of(&self.conn),
+            |v| {
+                if let Some(t) = v["choices"][0]["delta"]["content"].as_str() {
+                    text.push_str(t);
+                }
+                if let Some(u) = v.get("usage").filter(|u| !u.is_null()) {
+                    usage.input_tokens = u["prompt_tokens"].as_u64();
+                    usage.output_tokens = u["completion_tokens"].as_u64();
+                }
+            },
+        )
+        .await?;
+        if text.trim().is_empty() {
+            return Err(LlmError::Empty);
+        }
+        Ok(LlmResponse { text, usage })
     }
 
     async fn list_models(&self) -> Result<Vec<String>, LlmError> {
@@ -108,5 +148,33 @@ mod tests {
             .await;
         let models = OpenAiDriver::new(conn(&server.uri())).list_models().await.unwrap();
         assert_eq!(models, vec!["gpt-5.2", "gpt-4.1"]);
+    }
+
+    #[tokio::test]
+    async fn stream_accumulates_chunks_and_usage() {
+        let server = MockServer::start().await;
+        let sse_body = concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{}}],\"usage\":{\"prompt_tokens\":8,\"completion_tokens\":4}}\n\n",
+            "data: [DONE]\n\n",
+        );
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_raw(sse_body, "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+        let driver = OpenAiDriver::new(conn(&server.uri()));
+        let resp = driver
+            .stream(&LlmRequest { system: "s".into(), user: "u".into() })
+            .await
+            .unwrap();
+        assert_eq!(resp.text, "HiHi");
+        assert_eq!(resp.usage.input_tokens, Some(8));
+        assert_eq!(resp.usage.output_tokens, Some(4));
     }
 }
