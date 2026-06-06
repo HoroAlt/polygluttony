@@ -20,7 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 
 /** Case-tolerant token presence — mirrors the Rust validator. */
-export function tokenPresent(text: string, token: string): boolean {
+function tokenPresent(text: string, token: string): boolean {
   return text.includes(token.toLowerCase()) || text.includes(token.toUpperCase());
 }
 
@@ -33,9 +33,11 @@ interface Props {
   onDraftChange: (draft: string | null) => void;
   onSave: (text: string) => Promise<void>;
   onReset: () => Promise<void>;
+  /** Whether a save mutation is in flight — disables the Save button. */
+  saving?: boolean;
 }
 
-export function PromptEditor({ meta, loaded, draft, onDraftChange, onSave, onReset }: Props) {
+export function PromptEditor({ meta, loaded, draft, onDraftChange, onSave, onReset, saving = false }: Props) {
   const [helpOpen, setHelpOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -59,12 +61,12 @@ export function PromptEditor({ meta, loaded, draft, onDraftChange, onSave, onRes
   };
 
   const loadFromFile = async () => {
-    const path = await openDialog({
-      multiple: false,
-      filters: [{ name: "Text", extensions: ["txt", "md", "prompt"] }],
-    });
-    if (typeof path !== "string") return;
     try {
+      const path = await openDialog({
+        multiple: false,
+        filters: [{ name: "Text", extensions: ["txt", "md", "prompt"] }],
+      });
+      if (typeof path !== "string") return;
       onDraftChange(await ipc.readPromptFile(path));
     } catch (e) {
       toast.error(String(e));
@@ -107,6 +109,7 @@ export function PromptEditor({ meta, loaded, draft, onDraftChange, onSave, onRes
             type="button"
             onClick={() => setHelpOpen((v) => !v)}
             aria-label="What do these tags do?"
+            aria-expanded={helpOpen}
             className="inline-flex size-5 items-center justify-center rounded-full border border-border text-muted-foreground hover:bg-[color:var(--color-bg-hover)]"
           >
             <Question className="size-3.5" />
@@ -130,8 +133,8 @@ export function PromptEditor({ meta, loaded, draft, onDraftChange, onSave, onRes
             ))}
           </ul>
           <p className="mt-1.5 text-muted-foreground">
-            Tags are case-tolerant. Required tags must appear at least once — Save is disabled
-            otherwise.
+            Tags match in ALL-CAPS or all-lowercase form. Required tags must appear at least once —
+            Save is disabled otherwise.
           </p>
         </div>
       ) : null}
@@ -141,6 +144,7 @@ export function PromptEditor({ meta, loaded, draft, onDraftChange, onSave, onRes
         value={text}
         onChange={(e) => onDraftChange(e.target.value)}
         spellCheck={false}
+        aria-label={meta.name}
         className="min-h-0 flex-1 resize-none font-mono text-[12px] leading-relaxed"
       />
 
@@ -167,7 +171,7 @@ export function PromptEditor({ meta, loaded, draft, onDraftChange, onSave, onRes
           >
             Restore default
           </Button>
-          <Button size="sm" disabled={!canSave} onClick={() => void onSave(text)}>
+          <Button size="sm" disabled={!canSave || saving} onClick={() => void onSave(text)}>
             Save
           </Button>
         </div>

@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useBlocker } from "@tanstack/react-router";
+import { Warning } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import type { PromptId } from "@/types/generated/PromptId";
 import { PageHeader } from "@/components/page-header";
@@ -12,6 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import { usePrompts, usePromptText, usePromptMutations } from "./use-prompts";
 import { PromptList } from "./prompt-list";
 import { PromptEditor } from "./prompt-editor";
@@ -22,7 +25,7 @@ export function SettingsPage() {
   const [selected, setSelected] = useState<PromptId | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   const [pendingSelect, setPendingSelect] = useState<PromptId | null>(null);
-  const { data: loaded } = usePromptText(selected);
+  const { data: loaded, error: loadError } = usePromptText(selected);
 
   useEffect(() => {
     if (!selected && prompts?.length) setSelected(prompts[0].id);
@@ -30,6 +33,15 @@ export function SettingsPage() {
 
   const meta = prompts?.find((p) => p.id === selected);
   const dirty = draft !== null && loaded !== undefined && draft !== loaded;
+
+  // Fix 3: block navigation away when there are unsaved changes
+  useBlocker({
+    shouldBlockFn: () => {
+      if (!dirty) return false;
+      return !window.confirm("Discard unsaved prompt changes?");
+    },
+    disabled: !dirty,
+  });
 
   const select = (id: PromptId) => {
     if (id === selected) return;
@@ -49,13 +61,36 @@ export function SettingsPage() {
       />
       <div className="flex min-h-0 flex-1">
         <PromptList prompts={prompts} selected={selected} onSelect={select} />
-        {meta && loaded !== undefined ? (
+        {meta && loadError ? (
+          <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3 p-6">
+            <Warning className="size-8 text-[color:var(--color-alert)]" />
+            <p className="max-w-sm text-center text-[12.5px] text-[color:var(--color-alert)]">
+              {String(loadError)}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                try {
+                  await m.reset.mutateAsync(meta.id);
+                  setDraft(null);
+                  toast.success(`"${meta.name}" restored to default`);
+                } catch (e) {
+                  toast.error(String(e));
+                }
+              }}
+            >
+              Restore default
+            </Button>
+          </div>
+        ) : meta && loaded !== undefined ? (
           <PromptEditor
             key={meta.id}
             meta={meta}
             loaded={loaded}
             draft={draft}
             onDraftChange={setDraft}
+            saving={m.save.isPending}
             onSave={async (text) => {
               try {
                 await m.save.mutateAsync({ id: meta.id, text });

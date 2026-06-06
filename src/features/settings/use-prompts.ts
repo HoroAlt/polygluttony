@@ -25,11 +25,17 @@ export function usePromptMutations() {
   return {
     save: useMutation({
       mutationFn: ({ id, text }: { id: PromptId; text: string }) => ipc.savePrompt(id, text),
-      onSuccess: (_void, v) => invalidate(v.id),
+      onSuccess: (_void, v) => {
+        qc.setQueryData(["prompt", v.id], v.text);
+        invalidate(v.id);
+      },
     }),
     reset: useMutation({
       mutationFn: (id: PromptId) => ipc.resetPrompt(id),
-      onSuccess: (_text, id) => invalidate(id),
+      onSuccess: (text, id) => {
+        qc.setQueryData(["prompt", id], text);
+        invalidate(id);
+      },
     }),
   };
 }

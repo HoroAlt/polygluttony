@@ -33,6 +33,7 @@ export function PromptList({ prompts, selected, onSelect }: Props) {
                 key={p.id}
                 type="button"
                 onClick={() => onSelect(p.id)}
+                aria-current={selected === p.id ? "true" : undefined}
                 className={cn(
                   "flex w-full items-center justify-between px-4 py-1.5 text-left text-[12.5px]",
                   selected === p.id
@@ -45,6 +46,7 @@ export function PromptList({ prompts, selected, onSelect }: Props) {
                   <span
                     className="ml-2 size-1.5 shrink-0 rounded-full bg-[color:var(--color-alert)]"
                     title="Customized"
+                    aria-label="Customized"
                   />
                 ) : null}
               </button>
