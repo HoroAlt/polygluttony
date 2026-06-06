@@ -30,6 +30,9 @@ pub const REFERENCE_EXTRACT: &str = include_str!("../../prompts/reference-extrac
 /// the next `##` heading, or end of string). The `regex` crate does not support
 /// lookaheads, so we implement this with plain string search. This is a no-op
 /// when the section is absent.
+///
+/// Note: because we search for `"\n##"`, a `###` subsection also terminates
+/// the strip early — matching Python's `(?=##|\Z)` lookahead behaviour.
 fn strip_section(text: &str, heading: &str) -> String {
     let needle = format!("## {heading}");
     let Some(start) = text.find(&needle) else {
@@ -39,7 +42,8 @@ fn strip_section(text: &str, heading: &str) -> String {
     let after_heading = start + needle.len();
     let end = text[after_heading..]
         .find("\n##")
-        .map(|pos| after_heading + pos + 1) // keep the '\n' before next ##
+        // `+ 1` skips the '\n' so the next `##` heading starts flush at column 0.
+        .map(|pos| after_heading + pos + 1)
         .unwrap_or(text.len());
     format!("{}{}", &text[..start], &text[end..])
 }
@@ -175,6 +179,63 @@ mod tests {
         let unknown = extraction_prompt("xianxia", &pair(), None, Some("nope"));
         assert_ne!(base, qwen);
         assert_eq!(base, unknown);
+        // No raw placeholders should survive substitution in the qwen variant.
+        assert!(!qwen.contains("{established_terms}"));
+        assert!(!qwen.contains("{world_type}"));
+    }
+
+    // --- Direct unit tests for the private `strip_section` helper ---
+
+    #[test]
+    fn strip_section_middle() {
+        // Section is between two others; the prefix keeps its content and the
+        // following heading starts flush immediately after the splice point.
+        let text = "## INTRO\nkeep this\n## REMOVE ME\ndrop this\n## OUTRO\nkeep too";
+        let result = strip_section(text, "REMOVE ME");
+        assert!(result.contains("## INTRO\nkeep this\n"), "prefix intact");
+        assert!(!result.contains("REMOVE ME"), "section heading gone");
+        assert!(!result.contains("drop this"), "section body gone");
+        assert!(result.contains("## OUTRO\nkeep too"), "suffix intact, flush");
+    }
+
+    #[test]
+    fn strip_section_at_end() {
+        // Section runs to the end of the string — exercises the `unwrap_or(text.len())` arm.
+        let text = "## FIRST\nkeep\n## LAST\ndrop everything here";
+        let result = strip_section(text, "LAST");
+        assert!(result.contains("## FIRST\nkeep\n"), "prefix intact");
+        assert!(!result.contains("LAST"), "section heading gone");
+        assert!(!result.contains("drop everything here"), "trailing body gone");
+        // Nothing after the stripped section.
+        assert!(result.ends_with("keep\n") || result.ends_with("keep"), "no trailing junk");
+    }
+
+    #[test]
+    fn strip_section_heading_not_found() {
+        // When the heading is absent the input must be returned unchanged.
+        let text = "## ALPHA\nsome text\n## BETA\nmore text";
+        assert_eq!(strip_section(text, "GAMMA"), text);
+    }
+
+    #[test]
+    fn strip_section_heading_at_offset_zero() {
+        // The target heading is the very first thing in the string.
+        let text = "## REMOVE\ndrop\n## KEEP\nthis stays";
+        let result = strip_section(text, "REMOVE");
+        assert!(!result.contains("REMOVE"), "leading section gone");
+        assert!(!result.contains("drop"), "leading body gone");
+        assert!(result.starts_with("## KEEP"), "next heading now at start");
+        assert!(result.contains("this stays"), "trailing content intact");
+    }
+
+    #[test]
+    fn strip_section_only_first_occurrence_removed() {
+        // Deliberate divergence from Python's re.sub-all: only the FIRST matching
+        // section is stripped; a second identical heading survives untouched.
+        let text = "## DUP\nfirst body\n## OTHER\nmiddle\n## DUP\nsecond body";
+        let result = strip_section(text, "DUP");
+        assert!(!result.contains("first body"), "first instance stripped");
+        assert!(result.contains("## DUP\nsecond body"), "second instance preserved");
     }
 
     #[test]
