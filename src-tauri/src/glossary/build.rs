@@ -53,6 +53,7 @@ pub struct BuildJob {
     pub normalize: bool,
     pub personalize: bool,
     pub personalize_context: String,
+    pub prompts: crate::prompts::GlossaryPrompts,
     pub batch_limit: Option<u32>,
     pub cancel: CancellationToken,
 }
@@ -139,7 +140,9 @@ pub async fn build_glossary(
 
     // ── Reference: advisory English terminology (O11, logs for itself) ─────
     phase(&tx, GlossaryPhase::Reference, None).await;
-    let reference_terms = reference::load_or_extract(&job.folder, svc, job.batch_limit, &tx).await;
+    let reference_terms =
+        reference::load_or_extract(&job.folder, svc, job.batch_limit, &tx, &job.prompts.reference)
+            .await;
 
     // ── Extracting: all batches through the LLM, one shared system prompt ──
     let batches = glossary_batches(&all_lines, job.batch_limit);
@@ -147,7 +150,7 @@ pub async fn build_glossary(
     phase(&tx, GlossaryPhase::Extracting, Some(format!("{total} batches"))).await;
     let _ = tx.send(GlossaryEvent::Progress { done: 0, total }).await;
 
-    let system = prompts::extraction_prompt(&job.world_type, &job.pair, reference_terms.as_ref());
+    let system = prompts::extraction_prompt(&job.prompts.extract, &job.world_type, &job.pair, reference_terms.as_ref());
 
     // Progress is emitted by each future ON COMPLETION (shared atomic counter)
     // so the bar moves the moment ANY batch finishes — results are still
@@ -269,7 +272,7 @@ pub async fn build_glossary(
             Some(format!("{} new terms", new_terms.count())),
         )
         .await;
-        new_terms = normalize::normalize_pass(svc, &new_terms, &tx).await;
+        new_terms = normalize::normalize_pass(svc, &new_terms, &tx, &job.prompts.normalize).await;
         // A cancel mid-normalize reports normalized=false even though some
         // categories may already have been normalized (each keeps its original
         // terms on failure, so the data is valid either way) — conservative
@@ -285,7 +288,7 @@ pub async fn build_glossary(
     if job.personalize && !aborted && !job.cancel.is_cancelled() && !result.is_empty() {
         if let Some(p_svc) = personalize_svc {
             phase(&tx, GlossaryPhase::Personalizing, None).await;
-            match personalize::personalize_pass(p_svc, &result, &job.personalize_context).await {
+            match personalize::personalize_pass(p_svc, &result, &job.personalize_context, &job.prompts.personalize).await {
                 Ok(g) => {
                     result = g;
                     personalized = true;
@@ -407,6 +410,7 @@ mod tests {
             normalize: false,
             personalize: false,
             personalize_context: String::new(),
+            prompts: crate::prompts::GlossaryPrompts::defaults(),
             batch_limit: Some(2), // ×0.7 → 1 line per batch
             cancel,
         }

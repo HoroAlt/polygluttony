@@ -19,11 +19,12 @@ pub async fn personalize_pass(
     svc: &LlmService,
     glossary: &Glossary,
     context: &str,
+    template: &str,
 ) -> Result<Glossary, String> {
     let world =
         if glossary.world_type.is_empty() { "modern" } else { glossary.world_type.as_str() };
     let req = LlmRequest {
-        system: prompts::personalize_prompt(world, context),
+        system: prompts::personalize_prompt(template, world, context),
         user: prompts::personalize_user_prompt(glossary, context),
     };
     let resp = svc.request(req).await.map_err(|e| format!("personalize request failed: {e}"))?;
@@ -64,12 +65,16 @@ mod tests {
         g
     }
 
+    fn personalize_tpl() -> &'static str {
+        crate::prompts::default_text(crate::prompts::PromptId::GlossaryPersonalize)
+    }
+
     #[tokio::test(start_paused = true)]
     async fn replaces_glossary_on_success() {
         let d = ScriptedDriver::new(vec![Ok(
             r#"{"world_type":"xianxia","terms":{"characters":{"林动":"Lin Dong (MC)"}}}"#.into(),
         )]);
-        let out = personalize_pass(&svc(d.clone()), &glossary(), "Martial Universe").await.unwrap();
+        let out = personalize_pass(&svc(d.clone()), &glossary(), "Martial Universe", personalize_tpl()).await.unwrap();
         assert_eq!(out.characters.get("林动").unwrap(), "Lin Dong (MC)");
         // Prompt carried the title + glossary JSON.
         let req = d.last_request().unwrap();
@@ -80,16 +85,16 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn request_failure_returns_err() {
         let d = ScriptedDriver::new(vec![Err(LlmError::Http { status: 401, body: "no".into(), retry_after: None })]);
-        assert!(personalize_pass(&svc(d), &glossary(), "").await.is_err());
+        assert!(personalize_pass(&svc(d), &glossary(), "", personalize_tpl()).await.is_err());
     }
 
     #[tokio::test(start_paused = true)]
     async fn empty_or_unparseable_response_returns_err() {
         let d = ScriptedDriver::new(vec![Ok("sorry, no JSON".into())]);
-        assert!(personalize_pass(&svc(d), &glossary(), "").await.is_err());
+        assert!(personalize_pass(&svc(d), &glossary(), "", personalize_tpl()).await.is_err());
         // Parses but contains zero terms → would wipe the glossary → Err.
         let d = ScriptedDriver::new(vec![Ok(r#"{"terms":{}}"#.into())]);
-        assert!(personalize_pass(&svc(d), &glossary(), "").await.is_err());
+        assert!(personalize_pass(&svc(d), &glossary(), "", personalize_tpl()).await.is_err());
     }
 
     /// A truncated response must not drop terms it did not mention.
@@ -106,7 +111,7 @@ mod tests {
         let d = ScriptedDriver::new(vec![Ok(
             r#"{"characters":{"林动":"Lin Dong (Rock Saint)"}}"#.into(),
         )]);
-        let out = personalize_pass(&svc(d), &original, "ctx").await.unwrap();
+        let out = personalize_pass(&svc(d), &original, "ctx", personalize_tpl()).await.unwrap();
 
         // (a) Response's rename wins.
         assert_eq!(out.characters.get("林动").unwrap(), "Lin Dong (Rock Saint)");
@@ -130,7 +135,7 @@ mod tests {
         let d = ScriptedDriver::new(vec![Ok(
             r#"{"characters":{"林动":"","小炎":"Little Flame"}}"#.into(),
         )]);
-        let out = personalize_pass(&svc(d), &original, "ctx").await.unwrap();
+        let out = personalize_pass(&svc(d), &original, "ctx", personalize_tpl()).await.unwrap();
 
         // 林动's empty response value must be discarded; original "Lin Dong" restored.
         assert_eq!(out.characters.get("林动").unwrap(), "Lin Dong");
@@ -147,7 +152,7 @@ mod tests {
         let d = ScriptedDriver::new(vec![Ok(
             r#"{"terms":{"characters":{"林动":"Lin Dong"}}}"#.into(),
         )]);
-        personalize_pass(&svc(d.clone()), &g, "").await.unwrap();
+        personalize_pass(&svc(d.clone()), &g, "", personalize_tpl()).await.unwrap();
         let req = d.last_request().unwrap();
         assert!(req.system.contains("modern"), "expected 'modern' in system prompt");
     }
