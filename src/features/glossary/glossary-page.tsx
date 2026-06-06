@@ -7,6 +7,7 @@ import { useProject } from "@/features/project/use-project";
 import { EmptyState } from "@/components/empty-state";
 import { CreateView } from "./create-view";
 import { BuildProgress } from "./build-progress";
+import { ImportProgress } from "./import-progress";
 import { EditorView } from "./editor-view";
 
 export function glossaryKey(folder: string) {
@@ -72,6 +73,7 @@ export function GlossaryPage() {
     );
   }
   if (busy === "build") return <BuildProgress />;
+  if (busy === "import") return <ImportProgress />;
   if (!view || isPending) return null;
   if (!doc || doc.count === 0) return <CreateView view={view} />;
   return <EditorView view={view} doc={doc} />;
