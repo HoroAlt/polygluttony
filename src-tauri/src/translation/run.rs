@@ -1,5 +1,5 @@
 //! Run manager: one active run; spawns ≤concurrency file pipelines; forwards
-//! engine events to the webview; persists verify results.
+//! engine events to the webview.
 //!
 //! # tx lifecycle — why the forwarder terminates
 //!
@@ -17,7 +17,7 @@
 //!    the last file task exits and the spawner drops its `svc`.
 //!
 //! Once (1), (2) for every file, and (3) have all dropped, `rx.recv()` returns `None`
-//! and the forwarder loop exits — triggering persistence and state clear.
+//! and the forwarder loop exits — triggering state clear.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -52,7 +52,6 @@ pub struct StartArgs {
     pub tone: Tone,
     pub source_lang: String,
     pub target_lang: String,
-    pub now: i64, // webview-supplied timestamp (same convention as open_folder)
 }
 
 /// Return the active connection if it is usable. Delegates the per-connection
@@ -103,7 +102,7 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
     *guard = Some(RunHandle { cancel: cancel.clone() });
     drop(guard);
 
-    // Forwarder: engine events → webview; collects results; persists; clears state.
+    // Forwarder: engine events → webview; clears state.
     //
     // `rx.recv()` returns None once all Sender clones are dropped. The spawner
     // holds `tx` (dropped at end of spawner body) and `svc` (which holds one
@@ -112,19 +111,8 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
     // also holds `job_tx` (dropped when the task returns). So the forwarder
     // exits naturally after RunFinished is sent and all tasks have finished.
     let app_fwd = app.clone();
-    let folder_key = args.folder.clone();
-    let now = args.now;
     tauri::async_runtime::spawn(async move {
         while let Some(ev) = rx.recv().await {
-            // Persist BEFORE emitting RunFinished so that a UI handler that
-            // reads persisted verify data on this event never sees stale state.
-            if let RunEvent::RunFinished { results: ref r } = ev {
-                if !r.is_empty() {
-                    let _ = crate::config::verification::save_folder(
-                        &app_fwd, &folder_key, r, now,
-                    );
-                }
-            }
             let _ = app_fwd.emit(events::TRANSLATION_EVENT, &ev);
         }
         if let Some(state) = app_fwd.try_state::<RunState>() {
