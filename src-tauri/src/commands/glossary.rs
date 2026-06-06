@@ -83,7 +83,7 @@ pub async fn normalize_glossary(app: AppHandle, folder: String) -> AppResult<Nor
     let conn =
         crate::translation::run::usable_connection(&cfg).ok_or(AppError::NoActiveConnection)?;
     let templates =
-        crate::prompts::GlossaryPrompts::resolve(&crate::prompts::overrides_dir(&app)?)?.normalize;
+        crate::prompts::GlossaryPrompts::resolve_normalize(&crate::prompts::overrides_dir(&app)?)?;
     let cancel = run::claim_slot(&app, GlossaryOpKind::Normalize).await?;
     // RAII: the guard releases the slot on every exit path, including panics.
     // Declared before svc/tx so it drops last (after their senders close).

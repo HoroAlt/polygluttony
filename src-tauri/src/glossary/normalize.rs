@@ -79,8 +79,11 @@ pub async fn normalize_pass(
         .filter(|c| !glossary.category(c).is_empty())
         .collect();
     let futures = jobs.iter().map(|c| {
+        let template = templates
+            .get(*c)
+            .unwrap_or_else(|| panic!("GlossaryPrompts.normalize missing category {c}"));
         let req = LlmRequest {
-            system: prompts::normalize_prompt(&templates[*c], world),
+            system: prompts::normalize_prompt(template, world),
             user: prompts::normalize_user_prompt(glossary.category(c)),
         };
         svc.request(req)
@@ -252,5 +255,29 @@ mod tests {
         normalize_pass(&svc(d.clone(), 2), &g, &gtx(), &templates).await;
         let req = d.last_request().unwrap();
         assert!(req.system.contains("modern"), "expected 'modern' in system prompt");
+    }
+
+    /// Custom normalize template reaches the wire: a marked template must appear
+    /// in req.system, and its {world_type} placeholder must be filled.
+    #[tokio::test(start_paused = true)]
+    async fn custom_normalize_template_reaches_the_request() {
+        let mut g = Glossary::new("wuxia");
+        g.characters.insert("林动".into(), "Lin Dong".into());
+        let d = ScriptedDriver::new(vec![Ok(r#"{"林动":"Lin Dong"}"#.into())]);
+        let mut templates = default_templates();
+        templates.insert("characters".into(), "XNORMX {world_type}".into());
+        normalize_pass(&svc(d.clone(), 2), &g, &gtx(), &templates).await;
+        let req = d.last_request().unwrap();
+        assert!(
+            req.system.starts_with("XNORMX"),
+            "custom normalize template must reach the wire: {:?}",
+            req.system
+        );
+        assert!(
+            !req.system.contains("{world_type}"),
+            "world_type placeholder must be filled: {:?}",
+            req.system
+        );
+        assert!(req.system.contains("wuxia"), "world value must appear: {:?}", req.system);
     }
 }

@@ -143,6 +143,36 @@ mod tests {
         assert_eq!(out.characters.get("小炎").unwrap(), "Little Flame");
     }
 
+    /// Custom personalize template reaches the wire: a marked template must
+    /// appear in req.system with {donghua_title} and {world_type} filled.
+    #[tokio::test(start_paused = true)]
+    async fn custom_personalize_template_reaches_the_request() {
+        let d = ScriptedDriver::new(vec![Ok(
+            r#"{"terms":{"characters":{"林动":"Lin Dong (MC)"}}}"#.into(),
+        )]);
+        let tpl = "XPERSX {donghua_title} {world_type}";
+        let out = personalize_pass(&svc(d.clone()), &glossary(), "Martial Universe", tpl).await;
+        assert!(out.is_ok(), "personalize must succeed with valid response");
+        let req = d.last_request().unwrap();
+        assert!(
+            req.system.starts_with("XPERSX"),
+            "custom personalize template must reach the wire: {:?}",
+            req.system
+        );
+        assert!(
+            !req.system.contains("{donghua_title}"),
+            "donghua_title placeholder must be filled: {:?}",
+            req.system
+        );
+        assert!(
+            !req.system.contains("{world_type}"),
+            "world_type placeholder must be filled: {:?}",
+            req.system
+        );
+        assert!(req.system.contains("Martial Universe"), "title must appear: {:?}", req.system);
+        assert!(req.system.contains("xianxia"), "world value must appear: {:?}", req.system);
+    }
+
     /// Pin the "modern" fallback: a glossary with an empty world_type should
     /// send "modern" in the system prompt.
     #[tokio::test(start_paused = true)]

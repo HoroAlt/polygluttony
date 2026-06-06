@@ -150,7 +150,12 @@ pub async fn build_glossary(
     phase(&tx, GlossaryPhase::Extracting, Some(format!("{total} batches"))).await;
     let _ = tx.send(GlossaryEvent::Progress { done: 0, total }).await;
 
-    let system = prompts::extraction_prompt(&job.prompts.extract, &job.world_type, &job.pair, reference_terms.as_ref());
+    let system = prompts::extraction_prompt(
+        &job.prompts.extract,
+        &job.world_type,
+        &job.pair,
+        reference_terms.as_ref(),
+    );
 
     // Progress is emitted by each future ON COMPLETION (shared atomic counter)
     // so the bar moves the moment ANY batch finishes — results are still
@@ -288,7 +293,14 @@ pub async fn build_glossary(
     if job.personalize && !aborted && !job.cancel.is_cancelled() && !result.is_empty() {
         if let Some(p_svc) = personalize_svc {
             phase(&tx, GlossaryPhase::Personalizing, None).await;
-            match personalize::personalize_pass(p_svc, &result, &job.personalize_context, &job.prompts.personalize).await {
+            match personalize::personalize_pass(
+                p_svc,
+                &result,
+                &job.personalize_context,
+                &job.prompts.personalize,
+            )
+            .await
+            {
                 Ok(g) => {
                     result = g;
                     personalized = true;
@@ -688,6 +700,38 @@ mod tests {
         let saved = load_folder_glossary(dir.path()).unwrap();
         assert_eq!(saved.characters.get("林动").unwrap(), "EXISTING WINS");
         assert_eq!(saved.characters.get("应欢欢").unwrap(), "Ying Huanhuan");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn custom_extract_template_reaches_the_request() {
+        // No ref/ dir and no cache → build goes straight to extraction.
+        // batch_limit 2 × 0.7 → 1 line per batch; 1 line file → 1 extraction call.
+        let dir = tempfile::tempdir().unwrap();
+        write_ass(dir.path(), "e1.ass", &["修仙第一句"]);
+        let cancel = CancellationToken::new();
+        let mut prompts = crate::prompts::GlossaryPrompts::defaults();
+        prompts.extract = "XEXTRACTX {world_type}".into();
+        let d = ScriptedDriver::new(vec![Ok(r#"{"terms":{}}"#.into())]);
+        let svc = svc1(d.clone(), cancel.clone());
+        let mut j = job(dir.path(), vec!["e1.ass".into()], cancel);
+        j.prompts = prompts;
+        let _ = run_and_collect(j, &svc, None).await;
+        let req = d.last_request().expect("extraction must have sent a request");
+        assert!(
+            req.system.starts_with("XEXTRACTX"),
+            "custom extract template must reach the wire: {:?}",
+            req.system
+        );
+        assert!(
+            !req.system.contains("{world_type}"),
+            "world_type placeholder must be filled in custom template: {:?}",
+            req.system
+        );
+        assert!(
+            req.system.contains("xianxia"),
+            "world value 'xianxia' must appear in custom template: {:?}",
+            req.system
+        );
     }
 
     #[tokio::test(start_paused = true)]

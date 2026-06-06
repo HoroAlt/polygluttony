@@ -667,6 +667,25 @@ mod tests {
         assert_eq!(load_cache(dir.path()).unwrap().characters, vec!["Lin Dong"]);
     }
 
+    /// Custom reference template reaches the wire: a marked template must appear
+    /// in req.system for the extraction call.
+    #[tokio::test(start_paused = true)]
+    async fn custom_reference_template_reaches_the_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = write_ass(dir.path(), "e1.ass", &["Lin Dong attacks"]);
+        let d = ScriptedDriver::new(vec![Ok(r#"{"characters":["Lin Dong"]}"#.into())]);
+        let (gtx, _grx) = tokio::sync::mpsc::channel::<GlossaryEvent>(64);
+        let svc = make_svc(d.clone(), 2);
+        let tpl = "XREFX";
+        let _ = extract_from_files(&svc, &[f], Some(300), &gtx, tpl).await;
+        let req = d.last_request().expect("extraction must have sent a request");
+        assert!(
+            req.system.starts_with("XREFX"),
+            "custom reference template must reach the wire: {:?}",
+            req.system
+        );
+    }
+
     #[tokio::test(start_paused = true)]
     async fn load_or_extract_none_when_nothing_available() {
         let dir = tempfile::tempdir().unwrap();

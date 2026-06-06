@@ -453,14 +453,21 @@ pub struct GlossaryPrompts {
 }
 
 impl GlossaryPrompts {
-    pub fn resolve(dir: &Path) -> AppResult<Self> {
+    /// Just the six per-category normalize templates — for standalone
+    /// normalize (O12), so an unreadable override of an UNRELATED prompt
+    /// (e.g. Extraction) can't fail an op that never uses it.
+    pub fn resolve_normalize(dir: &Path) -> AppResult<BTreeMap<String, String>> {
         let mut normalize = BTreeMap::new();
         for c in crate::glossary::model::CATEGORIES {
             normalize.insert(c.to_string(), resolve(normalize_id(c), dir)?);
         }
+        Ok(normalize)
+    }
+
+    pub fn resolve(dir: &Path) -> AppResult<Self> {
         Ok(GlossaryPrompts {
             extract: resolve(PromptId::GlossaryExtract, dir)?,
-            normalize,
+            normalize: Self::resolve_normalize(dir)?,
             personalize: resolve(PromptId::GlossaryPersonalize, dir)?,
             reference: resolve(PromptId::ReferenceExtract, dir)?,
         })
