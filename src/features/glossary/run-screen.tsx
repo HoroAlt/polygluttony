@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { Stop } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { ipc } from "@/lib/ipc";
 import { useGlossaryRun } from "@/stores/glossary-store";
@@ -42,10 +43,10 @@ export function RunScreen({
       {/* Action row — Logs toggle far right, drawer expands below (Translate pattern). */}
       <div className="flex items-center gap-3 border-t border-border bg-[color:var(--popover)] px-5 py-3">
         <Button
-          variant="secondary"
+          variant="destructive"
           onClick={() => ipc.cancelGlossaryBuild().catch((e: unknown) => toast.error(String(e)))}
         >
-          Cancel
+          <Stop className="size-4" /> Cancel
         </Button>
         <span className="text-[11px] text-muted-foreground">{cancelNote}</span>
         <span className="flex-1" />

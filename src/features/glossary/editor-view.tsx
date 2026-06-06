@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
   ArrowsDownUp,
+  Books,
   DownloadSimple,
   MagnifyingGlass,
   NotePencil,
@@ -23,6 +24,7 @@ import { useAppStore } from "@/stores/app-store";
 import { useGlossaryRun } from "@/stores/glossary-store";
 import { projectKey } from "@/features/project/use-project";
 import { glossaryKey, markLocalSave } from "./glossary-page";
+import { referenceKey } from "./use-import-reference";
 import { DiffReview } from "./diff-review";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -62,6 +64,17 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
   const busy = useGlossaryRun((s) => s.busy);
   const lastDiff = useGlossaryRun((s) => s.lastDiff);
   const summary = useGlossaryRun((s) => s.summary);
+  const openReview = useGlossaryRun((s) => s.openReview);
+
+  // Reference-term count for the toolbar button (also the import entry point
+  // once a glossary exists — the review screen's empty state offers Import).
+  const { data: refTerms } = useQuery({
+    queryKey: referenceKey(view.folder),
+    queryFn: () => ipc.loadReference(view.folder),
+  });
+  const refCount = refTerms
+    ? CATEGORIES.reduce((n, c) => n + refTerms[c].length, 0)
+    : 0;
 
   const [search, setSearch] = useState("");
   const [addCat, setAddCat] = useState<Category>("characters");
@@ -211,6 +224,10 @@ export function EditorView({ view, doc }: { view: ProjectView; doc: GlossaryDoc 
                 <ArrowsDownUp className="size-4" /> View changes
               </Button>
             ) : null}
+            <Button size="sm" variant="secondary" onClick={() => openReview()}>
+              <Books className="size-4" />
+              Reference terms{refCount ? ` (${refCount})` : ""}
+            </Button>
             <Button size="sm" variant="secondary" onClick={openInEditor}>
               <NotePencil className="size-4" /> Open in editor
             </Button>
