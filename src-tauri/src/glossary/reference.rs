@@ -2,6 +2,14 @@
 //! `.ass` files, injected into the extraction prompt for consistency. Ports
 //! `glossary/reference_terminology.py` + `reference_loader.py`. The async
 //! LLM extractor lives in this module too (added in a later task).
+//!
+//! ## Cache-placement deviation from Python
+//! Python (`reference_loader.py:63`) stores the cache at `ref_dir.parent()` —
+//! which may be *above* the work folder when ref/ is at the parent or grandparent
+//! level. We always place the cache at `{folder}/glossary-reference.json` (the
+//! spec-blessed location). Consequence: Python-era caches that sit next to a
+//! parent-level `ref/` are silently ignored, and sibling season folders no longer
+//! share a single cache file.
 
 use std::path::{Path, PathBuf};
 
@@ -173,6 +181,10 @@ pub fn find_ref_dir(folder: &Path) -> Option<PathBuf> {
 }
 
 /// Sorted `*.ass` files in a reference dir (`reference_loader.py:31-40`).
+///
+/// Deliberate improvement over Python: the extension check is
+/// case-insensitive (`.ASS` matches), whereas Python's `glob("*.ass")` was
+/// case-sensitive on Linux/macOS.
 // consumed by the async LLM extractor (later step-4 task)
 #[allow(dead_code)]
 pub fn ref_ass_files(dir: &Path) -> Vec<PathBuf> {
@@ -228,11 +240,15 @@ mod tests {
 
     #[test]
     fn merge_is_case_insensitive_and_order_preserving() {
-        let mut a = ReferenceTerminology::default();
-        a.characters = vec!["Lin Dong".into()];
-        let mut b = ReferenceTerminology::default();
-        b.characters = vec!["lin dong".into(), "Ying Huanhuan".into()];
-        b.items = vec!["Ancestral Symbol".into()];
+        let mut a = ReferenceTerminology {
+            characters: vec!["Lin Dong".into()],
+            ..Default::default()
+        };
+        let b = ReferenceTerminology {
+            characters: vec!["lin dong".into(), "Ying Huanhuan".into()],
+            items: vec!["Ancestral Symbol".into()],
+            ..Default::default()
+        };
         a.merge(&b);
         assert_eq!(a.characters, vec!["Lin Dong", "Ying Huanhuan"]);
         assert_eq!(a.count(), 3);
@@ -240,17 +256,21 @@ mod tests {
 
     #[test]
     fn deduplicate_within_categories() {
-        let mut t = ReferenceTerminology::default();
-        t.skills = vec!["Devouring".into(), "devouring".into(), "Soul Symbol".into()];
+        let mut t = ReferenceTerminology {
+            skills: vec!["Devouring".into(), "devouring".into(), "Soul Symbol".into()],
+            ..Default::default()
+        };
         t.deduplicate();
         assert_eq!(t.skills, vec!["Devouring", "Soul Symbol"]);
     }
 
     #[test]
     fn prompt_string_lists_nonempty_categories() {
-        let mut t = ReferenceTerminology::default();
-        t.characters = vec!["Lin Dong".into(), "Ying Huanhuan".into()];
-        t.locations = vec!["Qingyang Town".into()];
+        let t = ReferenceTerminology {
+            characters: vec!["Lin Dong".into(), "Ying Huanhuan".into()],
+            locations: vec!["Qingyang Town".into()],
+            ..Default::default()
+        };
         let s = t.to_prompt_string();
         assert!(s.contains("CHARACTER NAMES: Lin Dong, Ying Huanhuan"));
         assert!(s.contains("LOCATIONS: Qingyang Town"));
@@ -270,8 +290,10 @@ mod tests {
     fn cache_roundtrip_and_corrupt_ignored() {
         let dir = tempfile::tempdir().unwrap();
         assert!(load_cache(dir.path()).is_none());
-        let mut t = ReferenceTerminology::default();
-        t.organizations = vec!["Dao Sect".into()];
+        let t = ReferenceTerminology {
+            organizations: vec!["Dao Sect".into()],
+            ..Default::default()
+        };
         save_cache(dir.path(), &t).unwrap();
         assert_eq!(load_cache(dir.path()).unwrap().organizations, vec!["Dao Sect"]);
         // Corrupt cache: ignored (None) but NOT deleted (deviation from Python).
@@ -288,11 +310,27 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let work = root.path().join("a/b");
         std::fs::create_dir_all(&work).unwrap();
+
+        // No ref/ anywhere yet.
         assert!(find_ref_dir(&work).is_none());
-        std::fs::create_dir(root.path().join("a/ref")).unwrap(); // parent level
+
+        // Grandparent level: root/ref — visible from root/a/b.
+        std::fs::create_dir(root.path().join("ref")).unwrap();
+        assert_eq!(find_ref_dir(&work).unwrap(), root.path().join("ref"));
+
+        // Parent level wins over grandparent: root/a/ref closer.
+        std::fs::create_dir(root.path().join("a/ref")).unwrap();
         assert_eq!(find_ref_dir(&work).unwrap(), root.path().join("a/ref"));
-        std::fs::create_dir(work.join("ref")).unwrap(); // own level wins
+
+        // Own level wins over parent: root/a/b/ref is closest.
+        std::fs::create_dir(work.join("ref")).unwrap();
         assert_eq!(find_ref_dir(&work).unwrap(), work.join("ref"));
+    }
+
+    #[test]
+    fn category_keys_match_glossary_categories() {
+        let label_keys: Vec<&str> = CATEGORY_LABELS.iter().map(|(c, _)| *c).collect();
+        assert_eq!(label_keys.as_slice(), crate::glossary::model::CATEGORIES.as_slice());
     }
 
     #[test]
@@ -308,8 +346,10 @@ mod tests {
         assert_eq!(s.source, ReferenceSource::RefDir);
         assert_eq!(s.count, 1); // .ass files only
 
-        let mut t = ReferenceTerminology::default();
-        t.characters = vec!["A".into(), "B".into()];
+        let t = ReferenceTerminology {
+            characters: vec!["A".into(), "B".into()],
+            ..Default::default()
+        };
         save_cache(dir.path(), &t).unwrap();
         let s = reference_status(dir.path());
         assert_eq!(s.source, ReferenceSource::Cached);

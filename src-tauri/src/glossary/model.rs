@@ -297,13 +297,9 @@ impl Glossary {
     pub fn from_json(s: &str) -> Option<Glossary> {
         let v: serde_json::Value = serde_json::from_str(s).ok()?;
         let world = v.get("world_type").and_then(|w| w.as_str()).unwrap_or("xianxia");
-        // Re-use from_terms_value for the inner terms loop (it accepts the
-        // whole doc and finds "terms" itself, or treats it as bare categories).
-        let mut g = Glossary::from_terms_value(&v, world);
-        // from_terms_value looks for "terms" first — which is what we have.
-        // Patch world_type since from_terms_value uses the caller-supplied one.
-        g.world_type = world.to_string();
-        Some(g)
+        // Re-use from_terms_value: it accepts the whole doc and finds "terms"
+        // itself (or treats it as bare categories), and already sets world_type.
+        Some(Glossary::from_terms_value(&v, world))
     }
 }
 
