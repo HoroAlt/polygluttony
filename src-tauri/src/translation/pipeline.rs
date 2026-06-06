@@ -67,7 +67,6 @@ pub struct FileJob<'a> {
     pub glossary: &'a Glossary,
     pub pair: LanguagePair,
     pub tone: Tone,
-    pub template_variant: Option<String>,
     pub batch_limit: Option<u32>,
     pub cancel: CancellationToken,
     pub tx: mpsc::Sender<RunEvent>,
@@ -110,7 +109,6 @@ async fn run(job: FileJob<'_>) -> Result<FileResult, String> {
     let settings = BatchSettings {
         pair: job.pair.clone(),
         tone: job.tone,
-        template_variant: job.template_variant.clone(),
     };
     let mut st = FileState {
         job: &job,
@@ -639,7 +637,6 @@ mod tests {
             glossary: &Glossary::default(),
             pair: LanguagePair::from_codes("zh", "en").unwrap(),
             tone: Tone::Standard,
-            template_variant: None,
             batch_limit: Some(100),
             cancel: CancellationToken::new(),
             tx: tx.clone(),
@@ -934,7 +931,6 @@ mod tests {
             glossary: &Glossary::default(),
             pair: LanguagePair::from_codes("zh", "en").unwrap(),
             tone: Tone::Standard,
-            template_variant: None,
             batch_limit: Some(100),
             cancel,
             tx,

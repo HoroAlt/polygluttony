@@ -103,7 +103,6 @@ mod tests {
         BatchSettings {
             pair: LanguagePair::from_codes("zh", "en").unwrap(),
             tone: Tone::Standard,
-            template_variant: None,
         }
     }
 

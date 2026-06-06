@@ -123,7 +123,6 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
     // Worker spawner.
     let sem = Arc::new(Semaphore::new(concurrency as usize));
     let batch_limit = conn.batch_dialogue_limit;
-    let template_variant = conn.prompt_template.clone();
     let tone = args.tone;
     tauri::async_runtime::spawn(async move {
         // Zip file names with task handles so a panicking task can emit a named error.
@@ -147,7 +146,6 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
             let job_glossary = glossary.clone();
             let job_pair = pair.clone();
             let input = folder.join(&name);
-            let job_variant = template_variant.clone();
             let task_name = name.clone();
             let handle = tauri::async_runtime::spawn(async move {
                 let _permit = permit;
@@ -158,7 +156,6 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
                     glossary: &job_glossary,
                     pair: job_pair,
                     tone,
-                    template_variant: job_variant,
                     batch_limit,
                     cancel: job_cancel,
                     tx: job_tx,

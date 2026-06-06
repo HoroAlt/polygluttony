@@ -13,7 +13,6 @@ use crate::glossary::reference::ReferenceTerminology;
 use crate::models::language_pair::LanguagePair;
 
 const GLOSSARY: &str = include_str!("../../prompts/glossary.txt");
-const GLOSSARY_QWEN: &str = include_str!("../../prompts/glossary.qwen.txt");
 const NORM_CHARACTERS: &str = include_str!("../../prompts/glossary-normalize-characters.txt");
 const NORM_CULTIVATION: &str = include_str!("../../prompts/glossary-normalize-cultivation.txt");
 const NORM_SKILLS: &str = include_str!("../../prompts/glossary-normalize-skills.txt");
@@ -46,19 +45,13 @@ fn strip_section(text: &str, heading: &str) -> String {
     format!("{}{}", &text[..start], &text[end..])
 }
 
-/// System prompt for one extraction batch. `variant` comes from
-/// `Connection.prompt_template` ("qwen" selects `glossary.qwen.txt`).
+/// System prompt for one extraction batch.
 pub fn extraction_prompt(
     world: &str,
     pair: &LanguagePair,
     reference: Option<&ReferenceTerminology>,
-    variant: Option<&str>,
 ) -> String {
-    let template = match variant {
-        Some("qwen") => GLOSSARY_QWEN,
-        _ => GLOSSARY,
-    };
-    let mut p = template
+    let mut p = GLOSSARY
         .replace("{WORLD_TYPE}", world)
         .replace("{world_type}", world)
         // Not present in today's templates; filled for forward-compat
@@ -134,7 +127,7 @@ mod tests {
 
     #[test]
     fn extraction_prompt_fills_both_cases_and_strips_established() {
-        let p = extraction_prompt("wuxia", &pair(), None, None);
+        let p = extraction_prompt("wuxia", &pair(), None);
         assert!(!p.contains("{world_type}"), "lowercase placeholder must be filled");
         assert!(!p.contains("{WORLD_TYPE}"));
         assert!(p.contains("wuxia"));
@@ -152,22 +145,10 @@ mod tests {
             characters: vec!["Lin Dong".into()],
             ..Default::default()
         };
-        let p = extraction_prompt("xianxia", &pair(), Some(&r), None);
+        let p = extraction_prompt("xianxia", &pair(), Some(&r));
         assert!(p.contains("## REFERENCE TERMINOLOGY"));
         assert!(p.contains("CHARACTER NAMES: Lin Dong"));
         assert!(!p.contains("{reference_terminology}"));
-    }
-
-    #[test]
-    fn qwen_variant_differs_unknown_falls_back() {
-        let base = extraction_prompt("xianxia", &pair(), None, None);
-        let qwen = extraction_prompt("xianxia", &pair(), None, Some("qwen"));
-        let unknown = extraction_prompt("xianxia", &pair(), None, Some("nope"));
-        assert_ne!(base, qwen);
-        assert_eq!(base, unknown);
-        // No raw placeholders should survive substitution in the qwen variant.
-        assert!(!qwen.contains("{established_terms}"));
-        assert!(!qwen.contains("{world_type}"));
     }
 
     // --- Direct unit tests for the private `strip_section` helper ---

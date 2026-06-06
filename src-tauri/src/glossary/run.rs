@@ -185,7 +185,6 @@ pub async fn start(app: AppHandle, args: StartArgs) -> AppResult<()> {
         normalize: args.normalize,
         personalize: args.personalize,
         personalize_context: args.personalize_context,
-        template_variant: conn.prompt_template.clone(),
         batch_limit: conn.batch_dialogue_limit,
         cancel: cancel.clone(),
     };

@@ -53,7 +53,6 @@ pub struct BuildJob {
     pub normalize: bool,
     pub personalize: bool,
     pub personalize_context: String,
-    pub template_variant: Option<String>,
     pub batch_limit: Option<u32>,
     pub cancel: CancellationToken,
 }
@@ -148,12 +147,7 @@ pub async fn build_glossary(
     phase(&tx, GlossaryPhase::Extracting, Some(format!("{total} batches"))).await;
     let _ = tx.send(GlossaryEvent::Progress { done: 0, total }).await;
 
-    let system = prompts::extraction_prompt(
-        &job.world_type,
-        &job.pair,
-        reference_terms.as_ref(),
-        job.template_variant.as_deref(),
-    );
+    let system = prompts::extraction_prompt(&job.world_type, &job.pair, reference_terms.as_ref());
 
     // Progress is emitted by each future ON COMPLETION (shared atomic counter)
     // so the bar moves the moment ANY batch finishes — results are still
@@ -413,7 +407,6 @@ mod tests {
             normalize: false,
             personalize: false,
             personalize_context: String::new(),
-            template_variant: None,
             batch_limit: Some(2), // ×0.7 → 1 line per batch
             cancel,
         }

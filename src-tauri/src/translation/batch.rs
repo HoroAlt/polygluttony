@@ -24,7 +24,6 @@ pub struct BatchLine {
 pub struct BatchSettings {
     pub pair: LanguagePair,
     pub tone: Tone,
-    pub template_variant: Option<String>,
 }
 
 #[derive(Debug)]
@@ -63,12 +62,7 @@ pub async fn translate_batch(
         .map(|l| (l.id, markers::inject(l.id, l.kind, &filtered.inject_hints(&l.stripped_src))))
         .collect();
 
-    let system = prompts::system_prompt(
-        &settings.pair,
-        &filtered,
-        settings.tone,
-        settings.template_variant.as_deref(),
-    );
+    let system = prompts::system_prompt(&settings.pair, &filtered, settings.tone);
     let user = prompts::user_prompt(&marked, context);
 
     let resp = match svc.request(LlmRequest { system, user }).await {
@@ -196,7 +190,6 @@ mod tests {
         BatchSettings {
             pair: LanguagePair::from_codes("zh", "en").unwrap(),
             tone: Tone::Standard,
-            template_variant: None,
         }
     }
 
