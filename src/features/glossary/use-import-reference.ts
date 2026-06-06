@@ -36,7 +36,7 @@ export function useImportReference(folder: string) {
       await qc.invalidateQueries({ queryKey: referenceStatusKey(folder) });
       await qc.invalidateQueries({ queryKey: referenceKey(folder) });
       // Land on the review — it shows counts, errors, and cancellation.
-      useGlossaryRun.getState().openReview(summary);
+      useGlossaryRun.getState().openReview(folder, summary);
     } catch (e: unknown) {
       toast.error(String(e));
     } finally {

@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ipc } from "@/lib/ipc";
 import { useAppStore } from "@/stores/app-store";
 import { useGlossaryRun } from "@/stores/glossary-store";
-import { useProject } from "@/features/project/use-project";
+import { useProject, projectKey } from "@/features/project/use-project";
+import type { ProjectView } from "@/types/generated/ProjectView";
 import { EmptyState } from "@/components/empty-state";
 import { CreateView } from "./create-view";
 import { BuildProgress } from "./build-progress";
@@ -64,6 +65,19 @@ export function GlossaryPage() {
     if (Date.now() - lastLocalSaveAt < 1500) return;
     void qc.invalidateQueries({ queryKey: glossaryKey(workdir) });
   }, [fileTick, workdir, qc]);
+
+  // Whenever the glossary doc (re)loads — build Done, external edit, mount —
+  // sync the term count into the rail badge and the cached ProjectView, which
+  // is staleTime-Infinity and would otherwise feed stale counts back to the
+  // shell on the next prefs save.
+  useEffect(() => {
+    if (!workdir || doc === undefined) return;
+    const n = doc?.count ?? null;
+    useAppStore.getState().setGlossaryTerms(n);
+    qc.setQueryData<ProjectView>(projectKey(workdir), (v) =>
+      v ? { ...v, glossary_terms: n } : v,
+    );
+  }, [doc, workdir, qc]);
 
   if (!workdir) return <EmptyState title="Glossary" description="Open a folder first." />;
   if (view && !view.supports_glossary) {

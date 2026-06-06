@@ -44,7 +44,7 @@ interface GlossaryRunStore {
   endOp: () => void
   setLastDiff: (d: GlossaryDiff) => void
   applyEvent: (e: GlossaryEvent) => void
-  openReview: (lastImport?: ReferenceSummary) => void
+  openReview: (folder: string, lastImport?: ReferenceSummary) => void
   closeReview: () => void
   reset: () => void
 }
@@ -82,8 +82,15 @@ export const useGlossaryRun = create<GlossaryRunStore>((set) => ({
     })),
   endOp: () => set({ busy: null }),
   setLastDiff: (lastDiff) => set({ lastDiff }),
-  openReview: (lastImport) => set((s) => ({ reviewOpen: true, lastImport: lastImport ?? s.lastImport })),
-  closeReview: () => set({ reviewOpen: false }),
+  openReview: (folder, lastImport) =>
+    set((s) => ({
+      reviewOpen: true,
+      // The review belongs to a folder; tagging it lets the folder-change
+      // reset close a review opened before any run this session.
+      folder: s.folder ?? folder,
+      lastImport: lastImport ?? s.lastImport,
+    })),
+  closeReview: () => set({ reviewOpen: false, lastImport: null }),
 
   applyEvent: (e) =>
     set((s) => {

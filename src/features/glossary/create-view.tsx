@@ -251,7 +251,7 @@ export function CreateView({ view }: { view: ProjectView }) {
                   <button
                     type="button"
                     className="text-primary hover:underline"
-                    onClick={() => openReview()}
+                    onClick={() => openReview(view.folder)}
                   >
                     View / edit
                   </button>
