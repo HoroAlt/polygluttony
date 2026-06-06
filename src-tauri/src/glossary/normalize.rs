@@ -1,5 +1,9 @@
 //! Per-category glossary normalization (O12 + build step 6). Port of
 //! `glossary_builder.py:441-533`.
+//!
+//! When invoked standalone (O12), the world type is derived from the glossary
+//! file itself — not from the project's effective override — because the file's
+//! world was set by the build that created it. This is accepted behaviour.
 
 use std::collections::BTreeMap;
 
@@ -27,22 +31,35 @@ pub struct NormalizeReview {
     pub diff: GlossaryDiff,
 }
 
-/// Parse one category response into a validated term map. `None` = keep the
-/// original category. Values trimmed + re-validated (deviation 8 — Python
-/// trusted the response wholesale, `glossary_builder.py:470-473`).
-fn parse_category_response(text: &str) -> Option<BTreeMap<String, String>> {
-    let v = parse_response::extract_object(text).ok()?;
-    let obj = v.as_object()?;
+/// Parse one category response into a validated term map.
+///
+/// Returns `Ok(map)` on success. Returns `Err(reason)` when the response
+/// cannot be parsed at all, so the caller can log the specific error and
+/// keep the original category.
+///
+/// Values trimmed + re-validated via [`Glossary::is_valid_translation`]
+/// (deviation 8 — Python trusted the response wholesale,
+/// `glossary_builder.py:470-473`).
+///
+/// Note: an empty `Ok` map (`{}` or all-invalid values) does NOT mean "keep
+/// original" — that is the caller's responsibility (see wipe-guard in
+/// `normalize_pass`). This matches the deviation from Python where any parsed
+/// dict, including empty, was blindly accepted.
+fn parse_category_response(text: &str) -> Result<BTreeMap<String, String>, String> {
+    // extract_object guarantees the returned Value is an object.
+    let v = parse_response::extract_object(text)
+        .map_err(|e| format!("unparseable response ({e})"))?;
+    let obj = v.as_object().expect("extract_object guarantees object");
     let mut out = BTreeMap::new();
     for (k, val) in obj {
         if let Some(s) = val.as_str() {
-            let t = s.trim();
-            if !t.is_empty() && t.chars().count() <= 200 {
-                out.insert(k.clone(), t.to_string());
+            let trimmed = s.trim();
+            if Glossary::is_valid_translation(trimmed) {
+                out.insert(k.clone(), trimmed.to_string());
             }
         }
     }
-    Some(out)
+    Ok(out)
 }
 
 /// Normalize every non-empty category concurrently (the service bounds
@@ -75,8 +92,7 @@ pub async fn normalize_pass(
 
     let mut out = glossary.clone();
     for (c, result) in jobs.iter().zip(results) {
-        let replacement = match result {
-            Ok(resp) => parse_category_response(&resp.text),
+        let map = match result {
             Err(e) => {
                 let _ = tx
                     .send(GlossaryEvent::Log {
@@ -86,18 +102,39 @@ pub async fn normalize_pass(
                     .await;
                 continue; // original kept; one log only
             }
+            Ok(resp) => match parse_category_response(&resp.text) {
+                Err(reason) => {
+                    let _ = tx
+                        .send(GlossaryEvent::Log {
+                            level: LogLevel::Warning,
+                            message: format!(
+                                "normalize {c}: {reason}, keeping original"
+                            ),
+                        })
+                        .await;
+                    continue;
+                }
+                Ok(m) => m,
+            },
         };
-        match replacement {
-            Some(map) => *out.category_mut(c) = map,
-            None => {
-                let _ = tx
-                    .send(GlossaryEvent::Log {
-                        level: LogLevel::Warning,
-                        message: format!("normalize {c}: unusable response, keeping original"),
-                    })
-                    .await;
-            }
+        // Wipe-guard: if the original category is non-empty and the parsed
+        // replacement is empty (e.g. LLM returned `{}` or all-invalid values),
+        // keep the original rather than silently deleting every term. This is a
+        // deliberate deviation from Python, which would accept the wipe
+        // (`glossary_builder.py:470-473` trusts any dict); it mirrors the
+        // wipe-guard in `personalize_pass`.
+        if map.is_empty() && !glossary.category(c).is_empty() {
+            let _ = tx
+                .send(GlossaryEvent::Log {
+                    level: LogLevel::Warning,
+                    message: format!(
+                        "normalize {c}: response yielded no valid terms, keeping original"
+                    ),
+                })
+                .await;
+            continue;
         }
+        *out.category_mut(c) = map;
     }
     out
 }
@@ -177,5 +214,35 @@ mod tests {
         let g = Glossary::new("modern");
         let out = normalize_pass(&svc(d, 2), &g, &gtx()).await;
         assert!(out.is_empty());
+    }
+
+    /// Wipe-guard: if the original category is non-empty and the LLM returns
+    /// `{}` (or only invalid values), the original is preserved.
+    #[tokio::test(start_paused = true)]
+    async fn empty_response_keeps_original_not_wiped() {
+        let mut g = Glossary::new("xianxia");
+        g.characters.insert("林动".into(), "Lin Dong".into());
+        // `{}` parses fine but yields no valid terms — original must survive.
+        let d = ScriptedDriver::new(vec![Ok("{}".into())]);
+        let out = normalize_pass(&svc(d.clone(), 2), &g, &gtx()).await;
+        assert_eq!(out.characters.get("林动").unwrap(), "Lin Dong");
+        // Also test a nested-object response that strips to empty after validation.
+        let mut g2 = Glossary::new("xianxia");
+        g2.characters.insert("林动".into(), "Lin Dong".into());
+        let d2 = ScriptedDriver::new(vec![Ok(r#"{"林动":{"nested":"obj"}}"#.into())]);
+        let out2 = normalize_pass(&svc(d2, 2), &g2, &gtx()).await;
+        assert_eq!(out2.characters.get("林动").unwrap(), "Lin Dong");
+    }
+
+    /// Pin the "modern" fallback: a glossary with an empty world_type should
+    /// send "modern" in the system prompt.
+    #[tokio::test(start_paused = true)]
+    async fn empty_world_type_uses_modern_in_prompt() {
+        let mut g = Glossary::new("");
+        g.characters.insert("a".into(), "A".into());
+        let d = ScriptedDriver::new(vec![Ok(r#"{"a":"A"}"#.into())]);
+        normalize_pass(&svc(d.clone(), 2), &g, &gtx()).await;
+        let req = d.last_request().unwrap();
+        assert!(req.system.contains("modern"), "expected 'modern' in system prompt");
     }
 }

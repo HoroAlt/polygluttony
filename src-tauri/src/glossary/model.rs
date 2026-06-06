@@ -207,7 +207,7 @@ impl Glossary {
 
     /// Reject empty/whitespace-only or absurdly long values (likely
     /// hallucinations) — `glossary.py:327-339`.
-    fn is_valid_translation(value: &str) -> bool {
+    pub(crate) fn is_valid_translation(value: &str) -> bool {
         let t = value.trim();
         !t.is_empty() && t.chars().count() <= 200
     }
@@ -284,14 +284,6 @@ impl Glossary {
         serde_json::to_string_pretty(&self.to_value()).expect("serializable")
     }
 
-    /// `{"world_type": ..., "terms": {category: {term: translation}}}` — same
-    /// shape as the Python tool's `glossary.json` (key order differs).
-    // Compact form used by personalize prompts later (not yet called).
-    #[allow(dead_code)]
-    pub fn to_json(&self) -> String {
-        self.to_value().to_string()
-    }
-
     /// Lenient parse (`glossary.py:210-241`): unknown/garbage values dropped,
     /// `None` only if the document isn't JSON at all.
     pub fn from_json(s: &str) -> Option<Glossary> {
@@ -318,7 +310,7 @@ mod tests {
     #[test]
     fn json_roundtrip_matches_python_shape() {
         let g = sample();
-        let json = g.to_json();
+        let json = g.to_json_pretty();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(v["world_type"], "xianxia");
         assert_eq!(v["terms"]["characters"]["星汉"], "Xinghan");

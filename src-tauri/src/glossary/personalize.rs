@@ -11,6 +11,10 @@ use crate::translation::parse_response;
 /// `Err(reason)` ⇒ caller keeps the original glossary and records the reason.
 /// A response with zero usable terms is an error — accepting it would replace
 /// the whole glossary with nothing (latent Python hazard, guarded here).
+///
+/// **Deviation:** Python honoured the response's own `world_type` field
+/// (`glossary.py:237`, defaulting to "xianxia" when absent). We always
+/// preserve the original glossary's `world_type` — user overrides must win.
 // consumed by commands/glossary (later step-4 task)
 #[allow(dead_code)]
 pub async fn personalize_pass(
@@ -81,5 +85,19 @@ mod tests {
         // Parses but contains zero terms → would wipe the glossary → Err.
         let d = ScriptedDriver::new(vec![Ok(r#"{"terms":{}}"#.into())]);
         assert!(personalize_pass(&svc(d), &glossary(), "").await.is_err());
+    }
+
+    /// Pin the "modern" fallback: a glossary with an empty world_type should
+    /// send "modern" in the system prompt.
+    #[tokio::test(start_paused = true)]
+    async fn empty_world_type_uses_modern_in_prompt() {
+        let mut g = Glossary::new("");
+        g.characters.insert("林动".into(), "Lin Dong".into());
+        let d = ScriptedDriver::new(vec![Ok(
+            r#"{"terms":{"characters":{"林动":"Lin Dong"}}}"#.into(),
+        )]);
+        personalize_pass(&svc(d.clone()), &g, "").await.unwrap();
+        let req = d.last_request().unwrap();
+        assert!(req.system.contains("modern"), "expected 'modern' in system prompt");
     }
 }
