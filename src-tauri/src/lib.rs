@@ -17,6 +17,7 @@ mod ass;
 mod utils;
 mod glossary;
 mod llm;
+mod prompts;
 mod translation;
 mod validation;
 
