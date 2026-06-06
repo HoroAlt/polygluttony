@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useBlocker } from "@tanstack/react-router";
+import { confirm as confirmDialog } from "@tauri-apps/plugin-dialog";
 import { Warning } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import type { PromptId } from "@/types/generated/PromptId";
@@ -35,10 +36,15 @@ export function SettingsPage() {
   const dirty = draft !== null && loaded !== undefined && draft !== loaded;
 
   // Fix 3: block navigation away when there are unsaved changes
+  // window.confirm is a no-op in WKWebView (Tauri/macOS) — use native dialog instead.
   useBlocker({
-    shouldBlockFn: () => {
+    shouldBlockFn: async () => {
       if (!dirty) return false;
-      return !window.confirm("Discard unsaved prompt changes?");
+      const leave = await confirmDialog("Discard unsaved prompt changes?", {
+        title: "Unsaved changes",
+        kind: "warning",
+      });
+      return !leave;
     },
     disabled: !dirty,
   });
