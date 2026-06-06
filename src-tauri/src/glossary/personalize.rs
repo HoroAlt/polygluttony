@@ -33,9 +33,12 @@ pub async fn personalize_pass(
     if out.is_empty() {
         return Err("personalize response contained no terms — keeping original".into());
     }
+    // Remove entries with empty/invalid translations so that merge_first_wins
+    // below restores the original's valid value for those keys.
+    out.scrub_invalid();
     // Merge-over: response terms win (they're the personalized versions); any
-    // term the response omitted is retained from the original — a truncated
-    // response must never drop terms (carry-forward fix).
+    // term the response omitted or returned invalid is restored from the
+    // original (carry-forward fix for truncated/partial responses).
     out.merge_first_wins(glossary);
     Ok(out)
 }
@@ -111,6 +114,28 @@ mod tests {
         assert_eq!(out.locations.get("青阳镇").unwrap(), "Qingyang Town");
         // (c) world_type preserved.
         assert_eq!(out.world_type, "xianxia");
+    }
+
+    /// An LLM response that returns a key from the original glossary with an
+    /// empty/invalid translation must NOT overwrite the original's valid value.
+    /// After scrubbing, `merge_first_wins` restores the original's translation.
+    #[tokio::test(start_paused = true)]
+    async fn empty_response_value_restores_original_translation() {
+        // The response "speaks" about 林动 but with an empty value — the original
+        // translation must survive, not the invalid response entry.
+        let mut original = Glossary::new("xianxia");
+        original.characters.insert("林动".into(), "Lin Dong".into());
+        original.characters.insert("小炎".into(), "Xiao Yan".into());
+
+        let d = ScriptedDriver::new(vec![Ok(
+            r#"{"characters":{"林动":"","小炎":"Little Flame"}}"#.into(),
+        )]);
+        let out = personalize_pass(&svc(d), &original, "ctx").await.unwrap();
+
+        // 林动's empty response value must be discarded; original "Lin Dong" restored.
+        assert_eq!(out.characters.get("林动").unwrap(), "Lin Dong");
+        // 小炎's valid new term is kept.
+        assert_eq!(out.characters.get("小炎").unwrap(), "Little Flame");
     }
 
     /// Pin the "modern" fallback: a glossary with an empty world_type should
