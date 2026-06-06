@@ -130,7 +130,7 @@ async fn run(job: FileJob<'_>) -> Result<FileResult, String> {
 
     // 2. Initial batch loop + 3. cleanup pass.
     st.translate_all().await?;
-    st.run_cleanup(detector.as_ref()).await;
+    st.run_cleanup(detector.as_ref()).await?;
 
     // 4. Verify + scoped retranslation loop (`translator.py:176-311`).
     let all_ids: Vec<u32> = (1..=st.lines.len() as u32).collect();
@@ -212,7 +212,7 @@ async fn run(job: FileJob<'_>) -> Result<FileResult, String> {
             }
         }
         // Re-run cleanup after any retranslation (`translator.py:307-311`).
-        st.run_cleanup(detector.as_ref()).await;
+        st.run_cleanup(detector.as_ref()).await?;
     }
 
     // 5. Final write.
@@ -484,8 +484,8 @@ impl FileState<'_, '_> {
 
     /// Cleanup pass for residual source text (`translator.py:583-684`). No-op
     /// when the source language has no character pattern (detector is None).
-    async fn run_cleanup(&mut self, detector: Option<&SourceDetector>) {
-        let Some(det) = detector else { return };
+    async fn run_cleanup(&mut self, detector: Option<&SourceDetector>) -> Result<(), String> {
+        let Some(det) = detector else { return Ok(()) };
         self.state(FileStateKind::Cleanup, None).await;
         let sources: BTreeMap<u32, String> = self
             .lines
@@ -502,6 +502,10 @@ impl FileState<'_, '_> {
             &self.settings,
         )
         .await;
+        if let Some(msg) = report.fatal {
+            self.job.cancel.cancel();
+            return Err(format!("cleanup aborted: {msg}"));
+        }
         if report.skipped_too_many {
             self.log(
                 LogLevel::Warning,
@@ -517,6 +521,7 @@ impl FileState<'_, '_> {
             )
             .await;
         }
+        Ok(())
     }
 
     /// Retranslate one scope with up-to-7 preceding translated pairs as
@@ -879,6 +884,30 @@ mod tests {
         assert!(events.iter().any(|e| matches!(
             e,
             RunEvent::Error { message, .. } if message.contains("verification aborted")
+        )));
+    }
+
+    #[tokio::test]
+    async fn dead_key_during_cleanup_fails_file() {
+        let src = ass_source(&["你好"]);
+        // The translated text still contains source-language characters, so the
+        // cleanup pass fires; its single request dies with 401.
+        let (result, events, _, _dir) = run_pipeline(
+            &src,
+            vec![
+                Ok(ok_batch(&[(1, "还是中文 leftover")])),
+                Err(crate::llm::error::LlmError::Http {
+                    status: 401,
+                    body: "dead".into(),
+                    retry_after: None,
+                }),
+            ],
+        )
+        .await;
+        assert!(!result.success);
+        assert!(events.iter().any(|e| matches!(
+            e,
+            RunEvent::Error { message, .. } if message.contains("cleanup aborted")
         )));
     }
 

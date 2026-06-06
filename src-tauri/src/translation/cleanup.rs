@@ -15,6 +15,9 @@ pub struct CleanupReport {
     pub cleaned: Vec<u32>,
     pub failed: Vec<u32>,
     pub skipped_too_many: bool,
+    /// Auth death mid-cleanup: the pipeline must doom the run, not proceed
+    /// to verify on a dead key (carry-forward fix).
+    pub fatal: Option<String>,
 }
 
 /// `sources`: id → raw source text (tags intact). `translations`: id → current
@@ -34,13 +37,14 @@ pub async fn cleanup_pass(
         .collect();
 
     if dirty.is_empty() {
-        return CleanupReport { cleaned: vec![], failed: vec![], skipped_too_many: false };
+        return CleanupReport { cleaned: vec![], failed: vec![], skipped_too_many: false, fatal: None };
     }
     if dirty.len() > MAX_CLEANUP_LINES {
-        return CleanupReport { cleaned: vec![], failed: dirty, skipped_too_many: true };
+        return CleanupReport { cleaned: vec![], failed: dirty, skipped_too_many: true, fatal: None };
     }
 
     let mut cleaned: Vec<u32> = Vec::new();
+    let mut fatal: Option<String> = None;
     for _ in 0..MAX_CLEANUP_ITERATIONS {
         let raw: Vec<(u32, String)> =
             dirty.iter().filter_map(|id| sources.get(id).map(|s| (*id, s.clone()))).collect();
@@ -49,11 +53,10 @@ pub async fn cleanup_pass(
             BatchOutcome::Success(m) => m,
             BatchOutcome::Partial { translated, .. } => translated,
             BatchOutcome::Failure(_) => continue,
-            // Judgment call: a Fatal (auth) outcome dooms the whole run — the
-            // pipeline will trip the cancel token on its next batch anyway, so
-            // burning the remaining cleanup iterations on a dead connection is
-            // pointless. Stop early and report the lines as failed.
-            BatchOutcome::Fatal(_) => break,
+            BatchOutcome::Fatal(msg) => {
+                fatal = Some(msg);
+                break;
+            }
         };
         // Track which ids the LLM actually returned so that unreturned ids
         // (silently omitted in a Partial response) are kept dirty rather than
@@ -75,7 +78,7 @@ pub async fn cleanup_pass(
             break;
         }
     }
-    CleanupReport { cleaned, failed: dirty, skipped_too_many: false }
+    CleanupReport { cleaned, failed: dirty, skipped_too_many: false, fatal }
 }
 
 #[cfg(test)]
@@ -200,5 +203,6 @@ mod tests {
                 .await;
         assert_eq!(report.failed, vec![1]);
         assert_eq!(driver.call_count(), 1); // not 3 — break, don't continue
+        assert!(report.fatal.is_some(), "fatal must be surfaced to the pipeline");
     }
 }
