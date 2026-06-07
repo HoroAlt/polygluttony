@@ -41,7 +41,7 @@ impl OpenAiResponsesDriver {
             ],
         });
         if self.conn.web_search.unwrap_or(false) {
-            body["tools"] = json!([{"type": "web_search_preview"}]);
+            body["tools"] = json!([{"type": "web_search"}]);
         }
         body
     }
@@ -141,6 +141,28 @@ mod tests {
             thinking_glossary_budget: None, web_search: Some(false),
             thinking_glossary_norm_budget: None,
         }
+    }
+
+    /// `web_search: true` must declare the GA `web_search` tool — not the
+    /// legacy `web_search_preview`, which is frozen out of newer controls.
+    #[tokio::test]
+    async fn web_search_sends_the_ga_tool_type() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/responses"))
+            .and(wiremock::matchers::body_partial_json(serde_json::json!({
+                "tools": [{"type": "web_search"}]
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "output": [{"type":"message","content":[{"type":"output_text","text":"hi"}]}]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let mut c = conn(&server.uri());
+        c.web_search = Some(true);
+        let d = OpenAiResponsesDriver::new(c);
+        assert_eq!(d.complete("s", "u").await.unwrap(), "hi");
     }
 
     #[tokio::test]
