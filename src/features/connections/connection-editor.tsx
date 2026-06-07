@@ -316,7 +316,8 @@ export function ConnectionEditor({
           Use this connection for &quot;look up names online&quot;
         </label>
         <HelpText>
-          The web-lookup step needs a model that can search the web (e.g. OpenAI/Gemini).
+          The web-lookup step needs a connection that can search the web —
+          currently only OpenAI (Responses API) with “Web search” enabled below.
         </HelpText>
 
         <label className="mb-1 mt-2 flex items-center gap-2 text-[11.5px]">
