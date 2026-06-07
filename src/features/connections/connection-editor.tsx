@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { SetupField } from "@/components/setup-field";
 import { HelpText } from "@/components/help-text";
 import { ModelCombobox } from "./model-combobox";
-import { AdvancedSettingsSection } from "./advanced-sections";
+import { AdvancedSettingsSection, ExtendedThinkingSection } from "./advanced-sections";
 
 const EMPTY: Connection = {
   driver: "openai",
@@ -74,7 +74,15 @@ export function ConnectionEditor({
     setPresetKey(initial ? matchPresetKey(initial, presets) : "");
     // Synthetic "new-*" selections start with an empty (user-supplied) name.
     setConnName(name.startsWith("new-") ? "" : name);
-  }, [initial, name, reset, presets]);
+    // Legacy configs predate the per-stage budgets: prefill missing ones from
+    // the translate budget so the inputs show what the engine will use.
+    if (initial?.thinking_enabled && initial.thinking_budget != null) {
+      if (initial.thinking_glossary_budget == null)
+        setValue("thinking_glossary_budget", initial.thinking_budget);
+      if (initial.thinking_glossary_norm_budget == null)
+        setValue("thinking_glossary_norm_budget", initial.thinking_budget);
+    }
+  }, [initial, name, reset, presets, setValue]);
 
   const [connName, setConnName] = useState<string>("");
   const [presetKey, setPresetKey] = useState<string>("");
@@ -274,6 +282,7 @@ export function ConnectionEditor({
             ) : null
           }
         />
+        <ExtendedThinkingSection form={form} />
       </div>
 
       <div className="flex items-center gap-2 border-t border-border bg-[color:var(--popover)] px-4 py-3">
