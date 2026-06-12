@@ -56,6 +56,10 @@ use crate::validation::LinePair;
 /// Context padding for scoped retranslation (`translator.py:243`).
 const SCOPE_PADDING: u32 = 5;
 
+/// Cap on per-line "untranslated" issues synthesized for the warning panel;
+/// anything beyond folds into one aggregate entry.
+const MAX_UNTRANSLATED_ISSUES: usize = 10;
+
 /// Everything needed to translate one file. Borrowed pieces (`svc`,
 /// `glossary`) are shared across the files of a run.
 pub struct FileJob<'a> {
@@ -217,6 +221,40 @@ async fn run(job: FileJob<'_>) -> Result<FileResult, String> {
     // 5. Final write.
     let untranslated = st.lines.len() - st.translations.len();
     has_warnings |= untranslated > 0 || !issues.is_empty();
+
+    // Warning-only files (untranslated lines, no verify issues) must still be
+    // expandable in the UI: synthesize one issue per untranslated line
+    // (capped) AFTER the real verify issues, plus an aggregate overflow entry.
+    // FileDone and FileResult share this vec, so both stay identical.
+    if untranslated > 0 {
+        let missing: Vec<u32> = (1..=st.lines.len() as u32)
+            .filter(|id| !st.translations.contains_key(id))
+            .collect();
+        for id in missing.iter().take(MAX_UNTRANSLATED_ISSUES) {
+            issues.push(VerifyIssue {
+                line_id: *id,
+                source: st.raw_text(*id).to_string(),
+                translation: String::new(),
+                issue_type: "untranslated".into(),
+                description: "line was not translated".into(),
+                severity: "warning".into(),
+            });
+        }
+        if missing.len() > MAX_UNTRANSLATED_ISSUES {
+            issues.push(VerifyIssue {
+                line_id: 0,
+                source: String::new(),
+                translation: String::new(),
+                issue_type: "untranslated".into(),
+                description: format!(
+                    "…and {} more untranslated lines",
+                    missing.len() - MAX_UNTRANSLATED_ISSUES
+                ),
+                severity: "warning".into(),
+            });
+        }
+    }
+
     let name = if has_warnings {
         warning_filename(&job.input, &job.pair)
     } else {
@@ -915,6 +953,67 @@ mod tests {
             e,
             RunEvent::Error { message, .. } if message.contains("cleanup aborted")
         )));
+    }
+
+    #[tokio::test]
+    async fn untranslated_lines_without_verify_issues_synthesize_issues() {
+        let src = ass_source(&["你好", "再见"]);
+        // Batch 1 returns only id 1 → Partial; id 2 requeues and dies down the
+        // halving ladder on "not json". The verify call also gets "not json",
+        // which degrades to a clean report — leaving id 2 untranslated with NO
+        // verify issues: the warning-only shape this test pins down.
+        let mut responses: Vec<Result<String, crate::llm::error::LlmError>> =
+            vec![Ok(ok_batch(&[(1, "Hello there friend")]))];
+        for _ in 0..15 {
+            responses.push(Ok("not json".into()));
+        }
+        let (result, events, _, _dir) = run_pipeline(&src, responses).await;
+
+        assert!(result.success);
+        assert!(result.has_warnings);
+        assert_eq!(result.translated_lines, 1);
+        let synth: Vec<_> =
+            result.issues.iter().filter(|i| i.issue_type == "untranslated").collect();
+        assert_eq!(synth.len(), 1);
+        assert_eq!(synth[0].line_id, 2);
+        assert_eq!(synth[0].source, "再见");
+        assert_eq!(synth[0].translation, "");
+        assert_eq!(synth[0].severity, "warning");
+        // FileDone carries the identical vec.
+        let done = events
+            .iter()
+            .find_map(|e| match e {
+                RunEvent::FileDone { issues, has_warnings: true, .. } => Some(issues.clone()),
+                _ => None,
+            })
+            .expect("FileDone with warnings");
+        assert_eq!(done.len(), result.issues.len());
+    }
+
+    #[tokio::test]
+    async fn untranslated_issue_cap_adds_aggregate_overflow_entry() {
+        // 14 lines; only id 1 translates → 13 untranslated → 10 per-line
+        // issues (ids 2..=11) + one aggregate "…and 3 more".
+        let lines: Vec<&str> = std::iter::repeat("你好").take(14).collect();
+        let src = ass_source(&lines);
+        let mut responses: Vec<Result<String, crate::llm::error::LlmError>> =
+            vec![Ok(ok_batch(&[(1, "Hello there friend")]))];
+        for _ in 0..15 {
+            responses.push(Ok("not json".into()));
+        }
+        let (result, _, _, _dir) = run_pipeline(&src, responses).await;
+
+        assert!(result.success && result.has_warnings);
+        assert_eq!(result.translated_lines, 1);
+        assert_eq!(result.issues.len(), 11);
+        for (i, issue) in result.issues[..10].iter().enumerate() {
+            assert_eq!(issue.issue_type, "untranslated");
+            assert_eq!(issue.line_id, i as u32 + 2); // ids 2..=11
+        }
+        let agg = &result.issues[10];
+        assert_eq!(agg.line_id, 0);
+        assert_eq!(agg.source, "");
+        assert!(agg.description.contains("3 more untranslated"), "{}", agg.description);
     }
 
     #[tokio::test]

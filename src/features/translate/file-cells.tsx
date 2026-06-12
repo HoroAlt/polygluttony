@@ -55,12 +55,16 @@ export function StatusGlyph({ kind, tone }: { kind: CellGlyph; tone: "translate"
   }
 }
 
-/** The engine currently emits only "drift", but the vocabulary is open. */
+/**
+ * The engine emits "drift", "glossary", "merged", "dropped", and the
+ * synthesized "untranslated" type (pipeline.rs — warning-only files).
+ */
 const TAG_CLS: Record<string, string> = {
   drift: "border-[color:var(--color-state-verify)]/40 bg-[color:var(--color-state-verify)]/15 text-[color:var(--color-state-verify)]",
   glossary: "border-primary/40 bg-primary/15 text-primary",
   merged: "border-[color:var(--color-alert)]/40 bg-[color:var(--color-alert)]/15 text-[color:var(--color-alert)]",
   dropped: "border-[color:var(--color-alert)]/40 bg-[color:var(--color-alert)]/15 text-[color:var(--color-alert)]",
+  untranslated: "border-[color:var(--color-alert)]/40 bg-[color:var(--color-alert)]/15 text-[color:var(--color-alert)]",
 };
 
 /** Amber-edged fold-out listing each issue with its source → translation evidence. */
@@ -81,17 +85,25 @@ export function IssuePanel({ issues }: { issues: VerifyIssue[] }) {
             >
               {it.issue_type}
             </span>
-            <span className="text-[11.5px] tabular-nums text-muted-foreground">
-              line {it.line_id}
-            </span>
+            {it.line_id > 0 && (
+              <span className="text-[11.5px] tabular-nums text-muted-foreground">
+                line {it.line_id}
+              </span>
+            )}
           </div>
           <p className="mt-1 text-[12.5px]">{it.description}</p>
-          <div className="mt-1 grid grid-cols-[14px_1fr] gap-x-2 text-[12px]">
-            <span className="text-muted-foreground/60">源</span>
-            <span className="italic text-muted-foreground">{it.source}</span>
-            <span className="text-muted-foreground/60">→</span>
-            <span>{it.translation}</span>
-          </div>
+          {it.source !== "" && (
+            <div className="mt-1 grid grid-cols-[14px_1fr] gap-x-2 text-[12px]">
+              <span className="text-muted-foreground/60">源</span>
+              <span className="italic text-muted-foreground">{it.source}</span>
+              {it.translation !== "" && (
+                <>
+                  <span className="text-muted-foreground/60">→</span>
+                  <span>{it.translation}</span>
+                </>
+              )}
+            </div>
+          )}
         </div>
       ))}
     </div>
