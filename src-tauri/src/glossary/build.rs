@@ -189,10 +189,7 @@ pub async fn build_glossary(
 
     let glossary_path = job.folder.join("glossary.json");
     let mut new_terms = Glossary::new(&job.world_type);
-    let mut errors: Vec<String> = reference_errors
-        .into_iter()
-        .map(|e| format!("reference terminology: {e}"))
-        .collect();
+    let mut errors: Vec<String> = reference_errors;
     let mut terms_extracted = 0u32;
     let mut batches_processed = 0u32;
     let mut aborted = false;
@@ -682,7 +679,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn reference_errors_land_prefixed_in_done_summary() {
+    async fn reference_errors_land_in_done_summary() {
         // ref/ dir → reference extraction fires BEFORE the glossary batch.
         // Driver cap=1 → requests are serialized in submission order:
         //   call 1: reference batch → unparseable → records an error
@@ -703,8 +700,8 @@ mod tests {
 
         assert_eq!(s.errors.len(), 1, "expected 1 error in summary: {:?}", s.errors);
         assert!(
-            s.errors[0].starts_with("reference terminology: "),
-            "error must be prefixed 'reference terminology: ': {:?}",
+            s.errors[0].starts_with("reference batch"),
+            "error must start with 'reference batch': {:?}",
             s.errors[0]
         );
         assert!(

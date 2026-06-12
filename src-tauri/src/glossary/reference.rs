@@ -318,7 +318,13 @@ pub async fn extract_from_files(
             // The service only produces its cancellation transport error when
             // the token is tripped — consequences of a stop, never recorded.
             Err(e) if e.is_cancelled() => {}
-            Err(e) => errors.push(format!("reference batch {i}/{total} failed: {e}")),
+            Err(e) => {
+                let msg = format!("reference batch {i}/{total} failed: {e}");
+                let _ = tx
+                    .send(GlossaryEvent::Log { level: LogLevel::Warning, message: msg.clone() })
+                    .await;
+                errors.push(msg);
+            }
         }
     }
     merged.deduplicate();
@@ -386,13 +392,6 @@ pub async fn load_or_extract(
         })
         .await;
     let (t, _files_ok, errors) = extract_from_files(svc, &files, batch_limit, tx, template).await;
-    // Emit per-error Warning logs (real-time visibility) while preserving the
-    // error list for the caller to include in the build summary.
-    for e in &errors {
-        let _ = tx
-            .send(GlossaryEvent::Log { level: LogLevel::Warning, message: e.clone() })
-            .await;
-    }
     if t.count() > 0 {
         if let Err(e) = save_cache(folder, &t) {
             // Cache-save failure is log-only: we still return the extracted terms.
