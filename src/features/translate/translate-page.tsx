@@ -311,7 +311,7 @@ export function TranslatePage() {
             <div className="grid grid-cols-[1fr_158px] items-stretch gap-5">
               <div className="flex flex-col gap-2.5">
                 {Array.from({ length: Math.max(hero.totalBatches, 1) }, (_, i) => (
-                  <BatchCell key={i} index={i} range={batchRange(i, hero)} state={batchCellState(hero, i)} />
+                  <BatchCell key={i} index={i} range={batchRange(i, hero)} state={batchCellState(hero, i)} since={hero.inFlightSince} />
                 ))}
               </div>
               <RunIntegrityRing done={integ.done} total={integ.total} retranslated={integ.retranslated} />

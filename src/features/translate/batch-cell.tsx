@@ -9,14 +9,27 @@ const META: Record<BatchState, { border: string; fill: string; label: string }> 
   retrans:     { border: "border-[color:color-mix(in_oklch,var(--color-amber)_42%,transparent)]", fill: "shimmer-amber", label: "drift caught → retranslating" },
 }
 
-export function BatchCell({ index, range, state }: { index: number; range: string; state: BatchState }) {
-  const [secs, setSecs] = useState(0)
+export function BatchCell({
+  index,
+  range,
+  state,
+  since,
+}: {
+  index: number
+  range: string
+  state: BatchState
+  /** Epoch ms when this batch went in-flight (from the store), so the latency
+   *  timer shows real elapsed time and survives switching the hero file. */
+  since?: number
+}) {
+  const [, setTick] = useState(0)
   const prev = useRef(state)
   const [sweeping, setSweeping] = useState(false)
 
+  // Re-render ~10×/s while in-flight so the elapsed read below stays live.
   useEffect(() => {
-    if (state !== "in-flight") { setSecs(0); return }
-    const t = setInterval(() => setSecs((s) => s + 0.1), 100)
+    if (state !== "in-flight") return
+    const t = setInterval(() => setTick((n) => n + 1), 100)
     return () => clearInterval(t)
   }, [state])
 
@@ -31,6 +44,7 @@ export function BatchCell({ index, range, state }: { index: number; range: strin
   }, [state])
 
   const m = META[state]
+  const secs = state === "in-flight" && since ? Math.max(0, (Date.now() - since) / 1000) : 0
   const status = state === "in-flight" ? `awaiting model · ${secs.toFixed(1)}s` : m.label
 
   return (
