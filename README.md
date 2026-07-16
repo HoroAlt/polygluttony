@@ -1,50 +1,78 @@
-<div align="center">
+# anitranslate
 
-<img src="assets/welcome.png" alt="Polygluttony" width="860">
+Local-first CLI for translating `.ass`/`.srt` subtitle files via LLM.
 
-# Polygluttony
+## Why
 
-**LLM-powered subtitle translation for donghua & anime — built to protect the things that break.**
+Anime/donghua subtitles in the wrong language are everywhere. This CLI
+extracts them from `.ass`/`.srt` files (or `.mkv` containers) and translates
+through whatever OpenAI-compatible endpoint you point it at — local Ollama
+by default, but also Anthropic, OpenAI, Gemini, DeepSeek, OpenRouter.
 
-[Website](https://pg.blyat.uk) · [Download](../../releases/latest) · macOS · Windows · Linux
+## Features
 
-</div>
+- **Local-first**: Ollama on `localhost:11434` works without an API key.
+- **ASS byte-faithful**: `{\pos}`, `{\an8}`, fonts, styles are preserved.
+- **Line-marker / partial-failure recovery**: every input line gets a
+  marker; the LLM sometimes drops or merges lines, and the engine
+  salvages the correct prefix.
+- **Drift detection**: a five-signal weighted detector catches translations
+  that wander off mid-batch, and the affected scope is retranslated.
+- **Cross-episode glossary**: 6 categories, auto-detected world type
+  (xianxia / wuxia / historical / modern), 6-pass LLM glossary build.
+- **No Tauri, no Electron, no Node**: pure Rust workspace. One binary, no
+  binary blobs you can't audit.
+- **255 unit tests passing** on the translation engine.
 
----
-
-Polygluttony translates `.ass` subtitle files with an LLM while guarding against the failure modes that wreck naive machine translation. Point it at a folder, connect a provider (Anthropic, OpenAI, or any OpenAI-compatible endpoint — including Gemini), optionally build a glossary, and run — watching live, honest telemetry the whole way.
-
-## Why it's different
-
-- **Line markers & partial-failure recovery** — every line is tracked, so when a model drops, merges, or reorders lines, Polygluttony detects exactly where it broke and salvages the correct prefix instead of failing the whole batch.
-- **Drift detection** — a five-signal weighted detector catches translations wandering off the source mid-batch and retranslates only the part that drifted.
-- **Byte-faithful ASS tags** — `{\pos}`, `{\an8}`, fonts, styles, and metadata come back exactly as they went in; only the dialogue is translated.
-- **Cross-episode glossary** — a six-category glossary, with auto-detected world type (xianxia / wuxia / historical / modern), keeps names and terms consistent across a whole season.
-- **Verification, not a score** — every file checks its own work and surfaces an actionable issue list, never a number.
-- **Mission-control UI** — a single window with live, batched telemetry: watch batches land, terms stream into the glossary, and drift get caught in real time.
-
-## Download
-
-Grab the latest build for your OS from the [**Releases**](../../releases/latest) page — macOS (Apple Silicon), Windows, and Linux.
-
-> These builds aren't signed with a paid developer certificate, so the OS warns on first launch:
-> - **macOS** — the first launch is blocked. Open **System Settings → Privacy & Security**, scroll to the bottom, and click **Open Anyway**, then launch again and confirm. (Right-click → Open no longer works on recent macOS.)
-> - **Windows** — on the SmartScreen prompt, choose **More info → Run anyway**.
-
-## Build from source
-
-Requires [Bun](https://bun.sh) and [Rust](https://rustup.rs) (stable), plus the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
+## Quick start
 
 ```bash
-bun install
-bun tauri dev      # run with hot reload
-bun tauri build    # produce a distributable bundle
+# Build
+git clone https://github.com/HoroAlt/anitranslate.git
+cd anitranslate
+cargo build --release
+
+# Or via Docker (Ollama bundled):
+docker compose up -d ollama
+docker compose run --rm anitranslate translate -f /work -s en -t ru
 ```
 
-## Stack
+The binary lands at `target/release/anitranslate`. Add it to your `PATH`.
 
-Tauri 2 · Rust · React 19 · TypeScript · Tailwind v4 · TanStack Router/Query.
+## Subcommands
+
+```bash
+anitranslate translate     # translate every .ass/.srt in a folder
+anitranslate build-glossary
+anitranslate inspect
+anitranslate config [--path|--show-active]
+```
+
+Run `anitranslate --help` for full options.
+
+## Configuration
+
+The config file lives at `$ANITRANSLATE_DATA_DIR/config.json` (default
+`~/.local/share/anitranslate/` on Linux,
+`~/Library/Application Support/anitranslate/` on macOS).
+
+First run seeds three connections: `ollama` (localhost:11434), `anthropic`,
+and `openai`. Edit the config to set API keys, switch `active_connection`,
+or add custom endpoints.
+
+## Security
+
+- `unsafe_code = "forbid"` workspace lint.
+- No `eval`, no `child_process`, no `Command::new`, no Tauri runtime.
+- No telemetry. The LLM is the only network endpoint.
+- Co-authored-by trailer on AI-assisted commits.
 
 ## License
 
-[MIT](LICENSE).
+MIT. See `LICENSE`.
+
+## Acknowledgements
+
+Forked from
+[blyat-uk/polygluttony](https://github.com/blyat-uk/polygluttony) (MIT).
+Engine ported; Tauri shell, React UI, and TypeScript bindings removed.
