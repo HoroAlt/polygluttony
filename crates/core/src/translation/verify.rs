@@ -58,7 +58,11 @@ pub async fn verify_file(
 ) -> Result<VerifyReport, LlmError> {
     let pairs: Vec<LinePair> = lines
         .iter()
-        .map(|(id, (s, t))| LinePair { id: *id, src: s.clone(), tgt: t.clone() })
+        .map(|(id, (s, t))| LinePair {
+            id: *id,
+            src: s.clone(),
+            tgt: t.clone(),
+        })
         .collect();
 
     // Stage 1: fast drift — failure short-circuits (`verifier.py:141-176`).
@@ -109,14 +113,20 @@ pub async fn verify_file(
         // outer wrapper when the context is nearly full). If both fail, degrade
         // gracefully with an empty list (`verifier.py:389-398`).
         let raw_issues: Vec<serde_json::Value> = match parse_response::extract_object(&resp.text) {
-            Ok(v) => v.get("issues").and_then(|i| i.as_array()).cloned().unwrap_or_default(),
+            Ok(v) => v
+                .get("issues")
+                .and_then(|i| i.as_array())
+                .cloned()
+                .unwrap_or_default(),
             Err(_) => parse_response::extract_array(&resp.text).unwrap_or_default(),
         };
         for item in raw_issues {
             let Some(id) = item.get("id").and_then(|i| i.as_u64()).map(|i| i as u32) else {
                 continue;
             };
-            let Some((src, tgt)) = lines.get(&id) else { continue };
+            let Some((src, tgt)) = lines.get(&id) else {
+                continue;
+            };
             failed.insert(id);
             issues.push(VerifyIssue {
                 line_id: id,
@@ -133,7 +143,11 @@ pub async fn verify_file(
         }
     }
 
-    Ok(VerifyReport { issues, sampled_line_ids, failed_line_ids: failed })
+    Ok(VerifyReport {
+        issues,
+        sampled_line_ids,
+        failed_line_ids: failed,
+    })
 }
 
 /// Sampling: thirds by sorted id; 50% per region clamped [5, 80]; priority
@@ -198,10 +212,7 @@ pub fn build_samples(
         let valid_primary: Vec<u32> = region
             .iter()
             .copied()
-            .filter(|id| {
-                !already_sampled.contains(id)
-                    && lines[id].0.chars().count() >= MIN_LEN
-            })
+            .filter(|id| !already_sampled.contains(id) && lines[id].0.chars().count() >= MIN_LEN)
             .collect();
 
         let valid: Vec<u32> = if valid_primary.len() < target {
@@ -209,8 +220,7 @@ pub fn build_samples(
                 .iter()
                 .copied()
                 .filter(|id| {
-                    !already_sampled.contains(id)
-                        && lines[id].0.chars().count() >= MIN_LEN_FALLBACK
+                    !already_sampled.contains(id) && lines[id].0.chars().count() >= MIN_LEN_FALLBACK
                 })
                 .collect()
         } else {
@@ -226,7 +236,12 @@ pub fn build_samples(
 
         // Deterministic every-Nth stride (deviation from Python's random.sample).
         let step = (valid.len() / sample_size).max(1);
-        let picked: Vec<u32> = valid.iter().copied().step_by(step).take(sample_size).collect();
+        let picked: Vec<u32> = valid
+            .iter()
+            .copied()
+            .step_by(step)
+            .take(sample_size)
+            .collect();
 
         for id in picked {
             let (s, t) = &lines[&id];
@@ -252,7 +267,15 @@ mod tests {
 
     fn pairs(n: u32) -> BTreeMap<u32, (String, String)> {
         (1..=n)
-            .map(|i| (i, (format!("中文句子内容第{i}行了"), format!("English sentence line {i}"))))
+            .map(|i| {
+                (
+                    i,
+                    (
+                        format!("中文句子内容第{i}行了"),
+                        format!("English sentence line {i}"),
+                    ),
+                )
+            })
             .collect()
     }
 
@@ -285,7 +308,9 @@ mod tests {
         let driver = ScriptedDriver::new(vec![]);
         let (tx, _rx) = tokio::sync::mpsc::channel(64);
         let svc = LlmService::new(driver.clone(), 2, CancellationToken::new(), tx);
-        let r = verify_file(&svc, &p, &BTreeMap::new(), tpl()).await.unwrap();
+        let r = verify_file(&svc, &p, &BTreeMap::new(), tpl())
+            .await
+            .unwrap();
         assert!(!r.issues.is_empty());
         assert_eq!(r.issues[0].issue_type, "drift");
         assert_eq!(driver.call_count(), 0); // stage 2 skipped
@@ -293,11 +318,14 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn llm_sampling_reports_flagged_ids() {
-        let driver =
-            ScriptedDriver::new(vec![Ok(r#"{"issues":[{"id":3,"reason":"unrelated"}]}"#.into())]);
+        let driver = ScriptedDriver::new(vec![Ok(
+            r#"{"issues":[{"id":3,"reason":"unrelated"}]}"#.into()
+        )]);
         let (tx, _rx) = tokio::sync::mpsc::channel(64);
         let svc = LlmService::new(driver, 2, CancellationToken::new(), tx);
-        let r = verify_file(&svc, &pairs(12), &BTreeMap::new(), tpl()).await.unwrap();
+        let r = verify_file(&svc, &pairs(12), &BTreeMap::new(), tpl())
+            .await
+            .unwrap();
         assert_eq!(r.failed_line_ids, [3].into());
         assert_eq!(r.issues.len(), 1);
         assert_eq!(r.issues[0].line_id, 3);
@@ -305,11 +333,12 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn bare_array_response_still_yields_issues() {
-        let driver =
-            ScriptedDriver::new(vec![Ok(r#"[{"id":3,"reason":"unrelated"}]"#.into())]);
+        let driver = ScriptedDriver::new(vec![Ok(r#"[{"id":3,"reason":"unrelated"}]"#.into())]);
         let (tx, _rx) = tokio::sync::mpsc::channel(64);
         let svc = LlmService::new(driver, 2, CancellationToken::new(), tx);
-        let r = verify_file(&svc, &pairs(12), &BTreeMap::new(), tpl()).await.unwrap();
+        let r = verify_file(&svc, &pairs(12), &BTreeMap::new(), tpl())
+            .await
+            .unwrap();
         assert_eq!(r.failed_line_ids, [3].into());
     }
 
@@ -322,7 +351,9 @@ mod tests {
         ]);
         let (tx, _rx) = tokio::sync::mpsc::channel(64);
         let svc = LlmService::new(driver, 2, CancellationToken::new(), tx);
-        let r = verify_file(&svc, &pairs(12), &BTreeMap::new(), tpl()).await.unwrap();
+        let r = verify_file(&svc, &pairs(12), &BTreeMap::new(), tpl())
+            .await
+            .unwrap();
         assert!(r.issues.is_empty()); // verifier degrades gracefully
     }
 
@@ -335,7 +366,9 @@ mod tests {
         })]);
         let (tx, _rx) = tokio::sync::mpsc::channel(64);
         let svc = LlmService::new(driver, 2, CancellationToken::new(), tx);
-        let err = verify_file(&svc, &pairs(12), &BTreeMap::new(), tpl()).await.unwrap_err();
+        let err = verify_file(&svc, &pairs(12), &BTreeMap::new(), tpl())
+            .await
+            .unwrap_err();
         assert!(err.is_auth());
     }
 
@@ -344,7 +377,9 @@ mod tests {
         let driver = ScriptedDriver::new(vec![Ok(r#"{"issues":[]}"#.into())]);
         let (tx, _rx) = tokio::sync::mpsc::channel(64);
         let svc = LlmService::new(driver.clone(), 2, CancellationToken::new(), tx);
-        verify_file(&svc, &pairs(12), &BTreeMap::new(), "XVERIFYX").await.unwrap();
+        verify_file(&svc, &pairs(12), &BTreeMap::new(), "XVERIFYX")
+            .await
+            .unwrap();
         assert_eq!(driver.last_request().unwrap().system, "XVERIFYX");
     }
 
@@ -358,7 +393,9 @@ mod tests {
         let cancel = CancellationToken::new();
         let svc = LlmService::new(driver, 2, cancel.clone(), tx);
         cancel.cancel();
-        let err = verify_file(&svc, &pairs(12), &BTreeMap::new(), tpl()).await.unwrap_err();
+        let err = verify_file(&svc, &pairs(12), &BTreeMap::new(), tpl())
+            .await
+            .unwrap_err();
         assert!(err.is_cancelled());
     }
 }

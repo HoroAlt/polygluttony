@@ -44,8 +44,8 @@ pub struct NormalizeReview {
 /// dict, including empty, was blindly accepted.
 fn parse_category_response(text: &str) -> Result<BTreeMap<String, String>, String> {
     // extract_object guarantees the returned Value is an object.
-    let v = parse_response::extract_object(text)
-        .map_err(|e| format!("unparseable response ({e})"))?;
+    let v =
+        parse_response::extract_object(text).map_err(|e| format!("unparseable response ({e})"))?;
     let obj = v.as_object().expect("extract_object guarantees object");
     let mut out = BTreeMap::new();
     for (k, val) in obj {
@@ -69,8 +69,11 @@ pub async fn normalize_pass(
     tx: &mpsc::Sender<GlossaryEvent>,
     templates: &std::collections::BTreeMap<String, String>,
 ) -> Glossary {
-    let world =
-        if glossary.world_type.is_empty() { "modern" } else { glossary.world_type.as_str() };
+    let world = if glossary.world_type.is_empty() {
+        "modern"
+    } else {
+        glossary.world_type.as_str()
+    };
 
     let jobs: Vec<&str> = CATEGORIES
         .iter()
@@ -106,9 +109,7 @@ pub async fn normalize_pass(
                     let _ = tx
                         .send(GlossaryEvent::Log {
                             level: LogLevel::Warning,
-                            message: format!(
-                                "normalize {c}: {reason}, keeping original"
-                            ),
+                            message: format!("normalize {c}: {reason}, keeping original"),
                         })
                         .await;
                     continue;
@@ -182,8 +183,12 @@ mod tests {
         // cap 1 + non-retryable error → one driver call per category, in
         // CATEGORIES order (characters before locations) — deterministic.
         let d = ScriptedDriver::new(vec![
-            Err(LlmError::Http { status: 400, body: "bad".into(), retry_after: None }), // characters fails
-            Ok(r#"{"华山":"Mt. Hua"}"#.into()),                       // locations succeeds
+            Err(LlmError::Http {
+                status: 400,
+                body: "bad".into(),
+                retry_after: None,
+            }), // characters fails
+            Ok(r#"{"华山":"Mt. Hua"}"#.into()), // locations succeeds
         ]);
         let templates = default_templates();
         let out = normalize_pass(&svc(d, 1), &g, &gtx(), &templates).await;
@@ -253,7 +258,10 @@ mod tests {
         let templates = default_templates();
         normalize_pass(&svc(d.clone(), 2), &g, &gtx(), &templates).await;
         let req = d.last_request().unwrap();
-        assert!(req.system.contains("modern"), "expected 'modern' in system prompt");
+        assert!(
+            req.system.contains("modern"),
+            "expected 'modern' in system prompt"
+        );
     }
 
     /// Custom normalize template reaches the wire: a marked template must appear
@@ -277,6 +285,10 @@ mod tests {
             "world_type placeholder must be filled: {:?}",
             req.system
         );
-        assert!(req.system.contains("wuxia"), "world value must appear: {:?}", req.system);
+        assert!(
+            req.system.contains("wuxia"),
+            "world value must appear: {:?}",
+            req.system
+        );
     }
 }

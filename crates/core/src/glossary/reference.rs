@@ -80,7 +80,10 @@ impl ReferenceTerminology {
     }
 
     pub fn count(&self) -> usize {
-        CATEGORY_LABELS.iter().map(|(c, _)| self.category(c).len()).sum()
+        CATEGORY_LABELS
+            .iter()
+            .map(|(c, _)| self.category(c).len())
+            .sum()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -106,7 +109,8 @@ impl ReferenceTerminology {
     pub fn deduplicate(&mut self) {
         for (c, _) in CATEGORY_LABELS {
             let mut seen = std::collections::HashSet::new();
-            self.category_mut(c).retain(|t| seen.insert(t.to_lowercase()));
+            self.category_mut(c)
+                .retain(|t| seen.insert(t.to_lowercase()));
         }
     }
 
@@ -209,15 +213,24 @@ pub struct ReferenceStatus {
 
 pub fn reference_status(folder: &Path) -> ReferenceStatus {
     if let Some(t) = load_cache(folder) {
-        return ReferenceStatus { source: ReferenceSource::Cached, count: t.count() as u32 };
+        return ReferenceStatus {
+            source: ReferenceSource::Cached,
+            count: t.count() as u32,
+        };
     }
     if let Some(dir) = find_ref_dir(folder) {
         let n = ref_ass_files(&dir).len();
         if n > 0 {
-            return ReferenceStatus { source: ReferenceSource::RefDir, count: n as u32 };
+            return ReferenceStatus {
+                source: ReferenceSource::RefDir,
+                count: n as u32,
+            };
         }
     }
-    ReferenceStatus { source: ReferenceSource::None, count: 0 }
+    ReferenceStatus {
+        source: ReferenceSource::None,
+        count: 0,
+    }
 }
 
 /// Result of an explicit Import (O11 picker path).
@@ -306,7 +319,10 @@ pub async fn extract_from_files(
                 Err(e) => {
                     let msg = format!("reference batch {i}/{total}: unparseable response ({e})");
                     let _ = tx
-                        .send(GlossaryEvent::Log { level: LogLevel::Warning, message: msg.clone() })
+                        .send(GlossaryEvent::Log {
+                            level: LogLevel::Warning,
+                            message: msg.clone(),
+                        })
                         .await;
                     errors.push(msg);
                 }
@@ -317,7 +333,10 @@ pub async fn extract_from_files(
             Err(e) => {
                 let msg = format!("reference batch {i}/{total} failed: {e}");
                 let _ = tx
-                    .send(GlossaryEvent::Log { level: LogLevel::Warning, message: msg.clone() })
+                    .send(GlossaryEvent::Log {
+                        level: LogLevel::Warning,
+                        message: msg.clone(),
+                    })
                     .await;
                 errors.push(msg);
             }
@@ -464,7 +483,10 @@ mod tests {
             ..Default::default()
         };
         save_cache(dir.path(), &t).unwrap();
-        assert_eq!(load_cache(dir.path()).unwrap().organizations, vec!["Dao Sect"]);
+        assert_eq!(
+            load_cache(dir.path()).unwrap().organizations,
+            vec!["Dao Sect"]
+        );
         // Corrupt cache: ignored (None) but NOT deleted (deviation from Python).
         std::fs::write(dir.path().join(CACHE_FILENAME), "not json").unwrap();
         assert!(load_cache(dir.path()).is_none());
@@ -499,7 +521,10 @@ mod tests {
     #[test]
     fn category_keys_match_glossary_categories() {
         let label_keys: Vec<&str> = CATEGORY_LABELS.iter().map(|(c, _)| *c).collect();
-        assert_eq!(label_keys.as_slice(), crate::glossary::model::CATEGORIES.as_slice());
+        assert_eq!(
+            label_keys.as_slice(),
+            crate::glossary::model::CATEGORIES.as_slice()
+        );
     }
 
     #[test]
@@ -560,13 +585,18 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn extractor_merges_batches_and_dedupes() {
         let dir = tempfile::tempdir().unwrap();
-        let f = write_ass(dir.path(), "e1.ass", &["Lin Dong attacks", "The sect gathers"]);
+        let f = write_ass(
+            dir.path(),
+            "e1.ass",
+            &["Lin Dong attacks", "The sect gathers"],
+        );
         let d = ScriptedDriver::new(vec![Ok(
             r#"{"characters":["Lin Dong","lin dong"],"organizations":["Dao Sect"]}"#.into(),
         )]);
         let (gtx, _grx) = tokio::sync::mpsc::channel::<GlossaryEvent>(64);
         let svc = make_svc(d, 2);
-        let (t, files_ok, errors) = extract_from_files(&svc, &[f], Some(300), &gtx, ref_tpl()).await;
+        let (t, files_ok, errors) =
+            extract_from_files(&svc, &[f], Some(300), &gtx, ref_tpl()).await;
         assert!(errors.is_empty());
         assert_eq!(files_ok, 1);
         assert_eq!(t.characters, vec!["Lin Dong"]); // deduped case-insensitively
@@ -582,7 +612,11 @@ mod tests {
         // FuturesOrdered delivers results in script order (deterministic).
         let f = write_ass(dir.path(), "e1.ass", &["line one", "line two"]);
         let d = ScriptedDriver::new(vec![
-            Err(crate::llm::error::LlmError::Http { status: 400, body: "bad request".into(), retry_after: None }),
+            Err(crate::llm::error::LlmError::Http {
+                status: 400,
+                body: "bad request".into(),
+                retry_after: None,
+            }),
             Ok(r#"{"locations":["Qingyang Town"]}"#.into()),
         ]);
         let (gtx, _grx) = tokio::sync::mpsc::channel::<GlossaryEvent>(64);
@@ -611,7 +645,10 @@ mod tests {
         let (gtx, _grx) = tokio::sync::mpsc::channel::<GlossaryEvent>(64);
         let (t, _files_ok, errors) = extract_from_files(&svc, &[f], Some(2), &gtx, ref_tpl()).await;
         assert!(t.is_empty());
-        assert!(errors.is_empty(), "cancel noise must be suppressed: {errors:?}");
+        assert!(
+            errors.is_empty(),
+            "cancel noise must be suppressed: {errors:?}"
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -686,7 +723,9 @@ mod tests {
         let svc = make_svc(d.clone(), 2);
         let tpl = "XREFX";
         let _ = extract_from_files(&svc, &[f], Some(300), &gtx, tpl).await;
-        let req = d.last_request().expect("extraction must have sent a request");
+        let req = d
+            .last_request()
+            .expect("extraction must have sent a request");
         assert!(
             req.system.starts_with("XREFX"),
             "custom reference template must reach the wire: {:?}",
@@ -718,7 +757,10 @@ mod tests {
         let svc = make_svc(d, 1);
         let (t, errors) = load_or_extract(dir.path(), &svc, Some(300), &gtx, ref_tpl()).await;
         // No terms extracted — unparseable response yields empty ReferenceTerminology.
-        assert!(t.is_none(), "expected None when all batches fail to parse: {t:?}");
+        assert!(
+            t.is_none(),
+            "expected None when all batches fail to parse: {t:?}"
+        );
         // The error must be returned (not just logged).
         assert_eq!(errors.len(), 1, "expected 1 error, got: {errors:?}");
         assert!(

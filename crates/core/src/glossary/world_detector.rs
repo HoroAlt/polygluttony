@@ -29,16 +29,16 @@ impl WorldType {
 }
 
 const XIANXIA: &[&str] = &[
-    "修仙", "筑基", "金丹", "元婴", "渡劫", "灵气", "仙人", "修炼", "灵石", "丹药",
-    "法宝", "飞剑", "结丹", "化神", "修真", "仙界", "魔界", "灵根", "天劫", "飞升",
+    "修仙", "筑基", "金丹", "元婴", "渡劫", "灵气", "仙人", "修炼", "灵石", "丹药", "法宝", "飞剑",
+    "结丹", "化神", "修真", "仙界", "魔界", "灵根", "天劫", "飞升",
 ];
 const WUXIA: &[&str] = &[
-    "武林", "江湖", "门派", "内力", "轻功", "武功", "剑法", "掌法", "拳法", "气功",
-    "真气", "武者", "侠客", "大侠", "盟主", "帮派",
+    "武林", "江湖", "门派", "内力", "轻功", "武功", "剑法", "掌法", "拳法", "气功", "真气", "武者",
+    "侠客", "大侠", "盟主", "帮派",
 ];
 const HISTORICAL: &[&str] = &[
-    "皇帝", "朝廷", "太监", "皇后", "大臣", "科举", "宰相", "王爷", "公主", "皇宫",
-    "后宫", "朝代", "太子", "皇上", "圣旨",
+    "皇帝", "朝廷", "太监", "皇后", "大臣", "科举", "宰相", "王爷", "公主", "皇宫", "后宫", "朝代",
+    "太子", "皇上", "圣旨",
 ];
 
 fn count(content: &str, keywords: &[&str]) -> usize {
@@ -72,10 +72,22 @@ mod tests {
 
     #[test]
     fn detects_each_world() {
-        assert_eq!(detect("修仙者突破了金丹期，灵气充沛，准备渡劫飞升", true), WorldType::Xianxia);
-        assert_eq!(detect("武林盟主召集江湖各大门派，讨论轻功和内力修炼", true), WorldType::Wuxia);
-        assert_eq!(detect("皇帝在朝廷上接见了宰相和大臣，商议科举事宜", true), WorldType::Historical);
-        assert_eq!(detect("今天天气不错，我们去公园散步吧", true), WorldType::Modern);
+        assert_eq!(
+            detect("修仙者突破了金丹期，灵气充沛，准备渡劫飞升", true),
+            WorldType::Xianxia
+        );
+        assert_eq!(
+            detect("武林盟主召集江湖各大门派，讨论轻功和内力修炼", true),
+            WorldType::Wuxia
+        );
+        assert_eq!(
+            detect("皇帝在朝廷上接见了宰相和大臣，商议科举事宜", true),
+            WorldType::Historical
+        );
+        assert_eq!(
+            detect("今天天气不错，我们去公园散步吧", true),
+            WorldType::Modern
+        );
     }
 
     #[test]

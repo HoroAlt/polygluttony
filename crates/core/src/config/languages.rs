@@ -45,28 +45,140 @@ fn lang(
 /// The supported-language table (ported from `config/languages.py:LANGUAGES`).
 pub fn languages() -> Vec<Language> {
     vec![
-        lang("zh", "Chinese", &["chi", "chs", "cht", "cn", "chinese"], "chi", Some(r"[\u{4E00}-\u{9FFF}]"), true, true),
-        lang("ko", "Korean", &["kor", "korean"], "kor", Some(r"[\u{AC00}-\u{D7AF}\u{1100}-\u{11FF}]"), false, false),
+        lang(
+            "zh",
+            "Chinese",
+            &["chi", "chs", "cht", "cn", "chinese"],
+            "chi",
+            Some(r"[\u{4E00}-\u{9FFF}]"),
+            true,
+            true,
+        ),
+        lang(
+            "ko",
+            "Korean",
+            &["kor", "korean"],
+            "kor",
+            Some(r"[\u{AC00}-\u{D7AF}\u{1100}-\u{11FF}]"),
+            false,
+            false,
+        ),
         // ja: `character_pattern` (cleanup detection) keeps kana+han, but
         // detection counts kana ONLY — the han range is shared with zh, so a
         // han-inclusive pattern made ja ≥ zh for all Chinese text and any
         // stray kana (kaomoji, `ー`) flipped detection to Japanese.
         Language {
             detection_pattern: Some(r"[\u{3040}-\u{309F}\u{30A0}-\u{30FF}]".into()),
-            ..lang("ja", "Japanese", &["jpn", "japanese"], "jpn", Some(r"[\u{3040}-\u{309F}\u{30A0}-\u{30FF}\u{4E00}-\u{9FFF}]"), false, false)
+            ..lang(
+                "ja",
+                "Japanese",
+                &["jpn", "japanese"],
+                "jpn",
+                Some(r"[\u{3040}-\u{309F}\u{30A0}-\u{30FF}\u{4E00}-\u{9FFF}]"),
+                false,
+                false,
+            )
         },
-        lang("en", "English", &["eng", "english"], "eng", None, false, false),
-        lang("es", "Spanish", &["spa", "spanish"], "spa", None, false, false),
-        lang("fr", "French", &["fra", "french"], "fra", None, false, false),
-        lang("de", "German", &["ger", "deu", "german"], "ger", None, false, false),
-        lang("pt", "Portuguese", &["por", "portuguese"], "por", None, false, false),
-        lang("ru", "Russian", &["rus", "russian"], "rus", Some(r"[\u{0400}-\u{04FF}]"), false, false),
-        lang("ar", "Arabic", &["ara", "arabic"], "ara", Some(r"[\u{0600}-\u{06FF}]"), false, false),
-        lang("th", "Thai", &["tha", "thai"], "tha", Some(r"[\u{0E00}-\u{0E7F}]"), false, false),
-        lang("vi", "Vietnamese", &["vie", "vietnamese"], "vie", None, false, false),
-        lang("id", "Indonesian", &["ind", "indonesian"], "ind", None, false, false),
+        lang(
+            "en",
+            "English",
+            &["eng", "english"],
+            "eng",
+            None,
+            false,
+            false,
+        ),
+        lang(
+            "es",
+            "Spanish",
+            &["spa", "spanish"],
+            "spa",
+            None,
+            false,
+            false,
+        ),
+        lang(
+            "fr",
+            "French",
+            &["fra", "french"],
+            "fra",
+            None,
+            false,
+            false,
+        ),
+        lang(
+            "de",
+            "German",
+            &["ger", "deu", "german"],
+            "ger",
+            None,
+            false,
+            false,
+        ),
+        lang(
+            "pt",
+            "Portuguese",
+            &["por", "portuguese"],
+            "por",
+            None,
+            false,
+            false,
+        ),
+        lang(
+            "ru",
+            "Russian",
+            &["rus", "russian"],
+            "rus",
+            Some(r"[\u{0400}-\u{04FF}]"),
+            false,
+            false,
+        ),
+        lang(
+            "ar",
+            "Arabic",
+            &["ara", "arabic"],
+            "ara",
+            Some(r"[\u{0600}-\u{06FF}]"),
+            false,
+            false,
+        ),
+        lang(
+            "th",
+            "Thai",
+            &["tha", "thai"],
+            "tha",
+            Some(r"[\u{0E00}-\u{0E7F}]"),
+            false,
+            false,
+        ),
+        lang(
+            "vi",
+            "Vietnamese",
+            &["vie", "vietnamese"],
+            "vie",
+            None,
+            false,
+            false,
+        ),
+        lang(
+            "id",
+            "Indonesian",
+            &["ind", "indonesian"],
+            "ind",
+            None,
+            false,
+            false,
+        ),
         lang("ms", "Malay", &["msa", "malay"], "msa", None, false, false),
-        lang("bg", "Bulgarian", &["bul", "bulgarian"], "bul", Some(r"[\u{0400}-\u{04FF}]"), false, false),
+        lang(
+            "bg",
+            "Bulgarian",
+            &["bul", "bulgarian"],
+            "bul",
+            Some(r"[\u{0400}-\u{04FF}]"),
+            false,
+            false,
+        ),
     ]
 }
 
@@ -96,7 +208,11 @@ pub fn get_language(code: &str) -> Option<Language> {
 pub fn detect_source_language(text: &str) -> Option<String> {
     let mut best: Option<(String, usize)> = None;
     for l in languages() {
-        let Some(pat) = l.detection_pattern.as_ref().or(l.character_pattern.as_ref()) else {
+        let Some(pat) = l
+            .detection_pattern
+            .as_ref()
+            .or(l.character_pattern.as_ref())
+        else {
             continue;
         };
         let re = regex::Regex::new(pat).expect("valid language pattern");
@@ -122,7 +238,10 @@ mod tests {
 
     #[test]
     fn detects_source_language_from_text() {
-        assert_eq!(detect_source_language("修仙者突破金丹").as_deref(), Some("zh"));
+        assert_eq!(
+            detect_source_language("修仙者突破金丹").as_deref(),
+            Some("zh")
+        );
         assert_eq!(detect_source_language("hello world"), None);
         assert_eq!(detect_source_language("Привет мир").as_deref(), Some("ru"));
     }
@@ -131,12 +250,18 @@ mod tests {
     fn chinese_with_stray_kana_detects_zh() {
         // Decorative katakana (kaomoji parts, prolonged-sound dashes) must not
         // flip detection to Japanese — ja is detected by kana only.
-        assert_eq!(detect_source_language("修仙者突破金丹期了ノー").as_deref(), Some("zh"));
+        assert_eq!(
+            detect_source_language("修仙者突破金丹期了ノー").as_deref(),
+            Some("zh")
+        );
     }
 
     #[test]
     fn kana_heavy_japanese_detects_ja() {
-        assert_eq!(detect_source_language("今日はとてもいい天気ですね").as_deref(), Some("ja"));
+        assert_eq!(
+            detect_source_language("今日はとてもいい天気ですね").as_deref(),
+            Some("ja")
+        );
     }
 
     #[test]

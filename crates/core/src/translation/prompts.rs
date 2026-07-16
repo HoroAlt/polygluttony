@@ -99,7 +99,12 @@ mod tests {
     /// the engine honours the case-tolerance the validator promises.
     #[test]
     fn lowercase_custom_tokens_are_filled_too() {
-        let p = system_prompt("{glossary} ## {tone}", &pair(), &Glossary::default(), "TONE-TEXT");
+        let p = system_prompt(
+            "{glossary} ## {tone}",
+            &pair(),
+            &Glossary::default(),
+            "TONE-TEXT",
+        );
         assert!(!p.contains("{glossary}"));
         assert!(p.contains("TONE-TEXT"));
     }

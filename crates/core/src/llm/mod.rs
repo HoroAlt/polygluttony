@@ -13,8 +13,8 @@ pub mod detect;
 pub mod error;
 pub mod openai;
 pub mod openai_responses;
-pub mod sse;
 pub mod service;
+pub mod sse;
 
 #[cfg(test)]
 pub mod test_support;
@@ -75,7 +75,13 @@ const RETRY_AFTER_CAP_SECS: u64 = 300;
 /// Integer-seconds `Retry-After` header, capped at [`RETRY_AFTER_CAP_SECS`];
 /// the HTTP-date form maps to `None`.
 pub(crate) fn retry_after_secs(headers: &reqwest::header::HeaderMap) -> Option<u64> {
-    let secs: u64 = headers.get(reqwest::header::RETRY_AFTER)?.to_str().ok()?.trim().parse().ok()?;
+    let secs: u64 = headers
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse()
+        .ok()?;
     Some(secs.min(RETRY_AFTER_CAP_SECS))
 }
 
@@ -100,7 +106,11 @@ pub(crate) async fn post_json(
         let retry_after = retry_after_secs(resp.headers());
         let body = resp.text().await.unwrap_or_default();
         let snippet: String = body.chars().take(500).collect();
-        return Err(LlmError::Http { status: status.as_u16(), body: snippet, retry_after });
+        return Err(LlmError::Http {
+            status: status.as_u16(),
+            body: snippet,
+            retry_after,
+        });
     }
     resp.json::<Value>()
         .await
@@ -126,7 +136,11 @@ pub(crate) async fn get_json(
         let retry_after = retry_after_secs(resp.headers());
         let body = resp.text().await.unwrap_or_default();
         let snippet: String = body.chars().take(500).collect();
-        return Err(LlmError::Http { status: status.as_u16(), body: snippet, retry_after });
+        return Err(LlmError::Http {
+            status: status.as_u16(),
+            body: snippet,
+            retry_after,
+        });
     }
     resp.json::<Value>()
         .await
@@ -189,7 +203,10 @@ mod tests {
 
     #[test]
     fn retry_after_rejects_non_integer_forms() {
-        assert_eq!(retry_after_secs(&headers_with("Fri, 07 Jun 2026 12:00:00 GMT")), None);
+        assert_eq!(
+            retry_after_secs(&headers_with("Fri, 07 Jun 2026 12:00:00 GMT")),
+            None
+        );
         assert_eq!(retry_after_secs(&headers_with("1.5")), None);
         assert_eq!(retry_after_secs(&headers_with("-1")), None);
         assert_eq!(retry_after_secs(&HeaderMap::new()), None);
@@ -197,6 +214,9 @@ mod tests {
 
     #[test]
     fn retry_after_caps_absurd_values() {
-        assert_eq!(retry_after_secs(&headers_with("9999999")), Some(RETRY_AFTER_CAP_SECS));
+        assert_eq!(
+            retry_after_secs(&headers_with("9999999")),
+            Some(RETRY_AFTER_CAP_SECS)
+        );
     }
 }

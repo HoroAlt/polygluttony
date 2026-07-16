@@ -7,8 +7,11 @@ use serde_json::{json, Value};
 
 use crate::config::Connection;
 use crate::llm::error::LlmError;
-use crate::llm::{base_of, client_for, get_json, parse_model_ids, post_json, timeout_of, LlmDriver, LlmRequest, LlmResponse, Usage};
 use crate::llm::sse;
+use crate::llm::{
+    base_of, client_for, get_json, parse_model_ids, post_json, timeout_of, LlmDriver, LlmRequest,
+    LlmResponse, Usage,
+};
 
 pub struct OpenAiResponsesDriver {
     conn: Connection,
@@ -52,7 +55,14 @@ impl LlmDriver for OpenAiResponsesDriver {
     async fn complete(&self, system: &str, user: &str) -> Result<String, LlmError> {
         let url = format!("{}/responses", base_of(&self.conn));
         let body = self.build_body(system, user);
-        let data = post_json(&self.client, &url, self.headers(), &body, timeout_of(&self.conn)).await?;
+        let data = post_json(
+            &self.client,
+            &url,
+            self.headers(),
+            &body,
+            timeout_of(&self.conn),
+        )
+        .await?;
         let text: String = data
             .get("output")
             .and_then(Value::as_array)
@@ -87,7 +97,9 @@ impl LlmDriver for OpenAiResponsesDriver {
             |v| match v.get("type").and_then(|t| t.as_str()) {
                 Some("response.failed") | Some("response.incomplete") | Some("error") => {
                     let snippet: String = v.to_string().chars().take(500).collect();
-                    Err(LlmError::Transport(format!("provider stream error: {snippet}")))
+                    Err(LlmError::Transport(format!(
+                        "provider stream error: {snippet}"
+                    )))
                 }
                 Some("response.output_text.delta") => {
                     if let Some(t) = v["delta"].as_str() {
@@ -134,11 +146,19 @@ mod tests {
 
     fn conn(base: &str) -> Connection {
         Connection {
-            driver: Driver::OpenaiResponses, base_url: base.into(), api_key: "k".into(),
-            model: "gpt-5.2".into(), max_tokens: Some(16), batch_dialogue_limit: None,
-            timeout: Some(10), connect_timeout: None, concurrency: None,
-            thinking_enabled: None, thinking_budget: None,
-            thinking_glossary_budget: None, thinking_glossary_norm_budget: None,
+            driver: Driver::OpenaiResponses,
+            base_url: base.into(),
+            api_key: "k".into(),
+            model: "gpt-5.2".into(),
+            max_tokens: Some(16),
+            batch_dialogue_limit: None,
+            timeout: Some(10),
+            connect_timeout: None,
+            concurrency: None,
+            thinking_enabled: None,
+            thinking_budget: None,
+            thinking_glossary_budget: None,
+            thinking_glossary_norm_budget: None,
             web_search: Some(false),
         }
     }
@@ -200,7 +220,10 @@ mod tests {
             .await;
         let driver = OpenAiResponsesDriver::new(conn(&server.uri()));
         let resp = driver
-            .stream(&LlmRequest { system: "s".into(), user: "u".into() })
+            .stream(&LlmRequest {
+                system: "s".into(),
+                user: "u".into(),
+            })
             .await
             .unwrap();
         assert_eq!(resp.text, "Hi");

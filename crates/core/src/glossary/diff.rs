@@ -91,7 +91,12 @@ impl GlossaryDiff {
                         DiffStatus::Unchanged
                     }
                 };
-                terms.push(TermDiff { source: source.clone(), old: o, new: n, status });
+                terms.push(TermDiff {
+                    source: source.clone(),
+                    old: o,
+                    new: n,
+                    status,
+                });
             }
             ta += a;
             tr += r;
@@ -124,12 +129,15 @@ mod tests {
     fn compute_classifies_all_statuses() {
         let mut old = Glossary::new("xianxia");
         old.characters.insert("林动".into(), "Lin Dong".into()); // unchanged
-        old.characters.insert("应欢欢".into(), "Ying HuanHuan".into()); // modified
+        old.characters
+            .insert("应欢欢".into(), "Ying HuanHuan".into()); // modified
         old.items.insert("祖符".into(), "Ancestral Symbol".into()); // removed
         let mut new = Glossary::new("xianxia");
         new.characters.insert("林动".into(), "Lin Dong".into());
-        new.characters.insert("应欢欢".into(), "Ying Huanhuan".into());
-        new.locations.insert("青阳镇".into(), "Qingyang Town".into()); // added
+        new.characters
+            .insert("应欢欢".into(), "Ying Huanhuan".into());
+        new.locations
+            .insert("青阳镇".into(), "Qingyang Town".into()); // added
 
         let d = GlossaryDiff::compute(Some(&old), &new);
         assert!(d.has_changes);
@@ -137,7 +145,11 @@ mod tests {
         assert_eq!(d.total_removed, 1);
         assert_eq!(d.total_modified, 1);
 
-        let chars = d.categories.iter().find(|c| c.name == "Characters").unwrap();
+        let chars = d
+            .categories
+            .iter()
+            .find(|c| c.name == "Characters")
+            .unwrap();
         assert_eq!(chars.modified, 1);
         assert_eq!(chars.unchanged, 1);
         let modified = chars.terms.iter().find(|t| t.source == "应欢欢").unwrap();

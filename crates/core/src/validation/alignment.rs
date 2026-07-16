@@ -13,13 +13,27 @@ pub struct AlignmentCheck {
 }
 
 pub fn check(expected_ids: &[u32], output: &[LinePair]) -> AlignmentCheck {
-    let mut r = AlignmentCheck { is_valid: true, ..Default::default() };
+    let mut r = AlignmentCheck {
+        is_valid: true,
+        ..Default::default()
+    };
     let out_ids: Vec<u32> = output.iter().map(|p| p.id).collect();
 
-    r.missing_ids = expected_ids.iter().copied().filter(|id| !out_ids.contains(id)).collect();
-    r.extra_ids = out_ids.iter().copied().filter(|id| !expected_ids.contains(id)).collect();
-    r.empty_translations =
-        output.iter().filter(|p| p.tgt.trim().is_empty()).map(|p| p.id).collect();
+    r.missing_ids = expected_ids
+        .iter()
+        .copied()
+        .filter(|id| !out_ids.contains(id))
+        .collect();
+    r.extra_ids = out_ids
+        .iter()
+        .copied()
+        .filter(|id| !expected_ids.contains(id))
+        .collect();
+    r.empty_translations = output
+        .iter()
+        .filter(|p| p.tgt.trim().is_empty())
+        .map(|p| p.id)
+        .collect();
 
     if !r.missing_ids.is_empty() || !r.extra_ids.is_empty() || !r.empty_translations.is_empty() {
         r.is_valid = false;
@@ -40,7 +54,11 @@ mod tests {
     use crate::validation::LinePair;
 
     fn pair(id: u32, tgt: &str) -> LinePair {
-        LinePair { id, src: format!("src{id}"), tgt: tgt.into() }
+        LinePair {
+            id,
+            src: format!("src{id}"),
+            tgt: tgt.into(),
+        }
     }
 
     #[test]

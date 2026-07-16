@@ -69,7 +69,10 @@ pub struct MarkerCheck {
 /// Validate the markers the model echoed back in its `tgt` fields against the
 /// ids we sent. Mirrors `LineMarker.validate` (`line_marker.py:70-162`).
 pub fn check(expected_ids: &[u32], output: &[LinePair]) -> MarkerCheck {
-    let mut r = MarkerCheck { is_valid: true, ..Default::default() };
+    let mut r = MarkerCheck {
+        is_valid: true,
+        ..Default::default()
+    };
     let mut found: Vec<u32> = Vec::new();
 
     for pair in output {
@@ -90,8 +93,16 @@ pub fn check(expected_ids: &[u32], output: &[LinePair]) -> MarkerCheck {
     }
 
     let expected: Vec<u32> = expected_ids.to_vec();
-    r.missing_markers = expected.iter().copied().filter(|id| !found.contains(id)).collect();
-    r.extra_markers = found.iter().copied().filter(|id| !expected.contains(id)).collect();
+    r.missing_markers = expected
+        .iter()
+        .copied()
+        .filter(|id| !found.contains(id))
+        .collect();
+    r.extra_markers = found
+        .iter()
+        .copied()
+        .filter(|id| !expected.contains(id))
+        .collect();
 
     // Order: dedup found, compare against expected filtered to found ids.
     let mut found_dedup: Vec<u32> = Vec::new();
@@ -100,8 +111,11 @@ pub fn check(expected_ids: &[u32], output: &[LinePair]) -> MarkerCheck {
             found_dedup.push(*id);
         }
     }
-    let expected_present: Vec<u32> =
-        expected.iter().copied().filter(|id| found_dedup.contains(id)).collect();
+    let expected_present: Vec<u32> = expected
+        .iter()
+        .copied()
+        .filter(|id| found_dedup.contains(id))
+        .collect();
     if found_dedup != expected_present {
         for (a, b) in found_dedup.iter().zip(expected_present.iter()) {
             if a != b {
@@ -155,7 +169,11 @@ mod tests {
     }
 
     fn pair(id: u32, tgt: &str) -> crate::validation::LinePair {
-        crate::validation::LinePair { id, src: String::new(), tgt: tgt.into() }
+        crate::validation::LinePair {
+            id,
+            src: String::new(),
+            tgt: tgt.into(),
+        }
     }
 
     #[test]

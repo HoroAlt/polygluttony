@@ -17,7 +17,9 @@ impl SourceDetector {
     pub fn for_language(code: &str) -> Option<SourceDetector> {
         let lang = get_language(code)?;
         let pat = lang.character_pattern?;
-        Some(SourceDetector { pattern: Regex::new(&pat).expect("valid language pattern") })
+        Some(SourceDetector {
+            pattern: Regex::new(&pat).expect("valid language pattern"),
+        })
     }
 
     pub fn source_ratio(&self, text: &str) -> f64 {

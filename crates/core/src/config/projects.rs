@@ -7,7 +7,6 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-
 /* ts_rs removed */
 
 use crate::error::{AppError, AppResult};

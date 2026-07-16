@@ -6,8 +6,11 @@ use serde_json::{json, Value};
 
 use crate::config::Connection;
 use crate::llm::error::LlmError;
-use crate::llm::{base_of, client_for, get_json, parse_model_ids, post_json, timeout_of, LlmDriver, LlmRequest, LlmResponse, Usage};
 use crate::llm::sse;
+use crate::llm::{
+    base_of, client_for, get_json, parse_model_ids, post_json, timeout_of, LlmDriver, LlmRequest,
+    LlmResponse, Usage,
+};
 
 pub struct AnthropicDriver {
     conn: Connection,
@@ -54,7 +57,14 @@ impl LlmDriver for AnthropicDriver {
     async fn complete(&self, system: &str, user: &str) -> Result<String, LlmError> {
         let url = format!("{}/v1/messages", base_of(&self.conn));
         let body = self.build_body(system, user);
-        let data = post_json(&self.client, &url, self.headers(), &body, timeout_of(&self.conn)).await?;
+        let data = post_json(
+            &self.client,
+            &url,
+            self.headers(),
+            &body,
+            timeout_of(&self.conn),
+        )
+        .await?;
         let text: String = data
             .get("content")
             .and_then(Value::as_array)
@@ -86,7 +96,9 @@ impl LlmDriver for AnthropicDriver {
             |v| match v.get("type").and_then(|t| t.as_str()) {
                 Some("error") => {
                     let snippet: String = v.to_string().chars().take(500).collect();
-                    Err(LlmError::Transport(format!("provider stream error: {snippet}")))
+                    Err(LlmError::Transport(format!(
+                        "provider stream error: {snippet}"
+                    )))
                 }
                 Some("content_block_delta") => {
                     if v["delta"]["type"] == "text_delta" {
@@ -141,11 +153,19 @@ mod tests {
 
     fn conn(base: &str) -> Connection {
         Connection {
-            driver: Driver::Anthropic, base_url: base.into(), api_key: "k".into(),
-            model: "claude-x".into(), max_tokens: Some(16), batch_dialogue_limit: None,
-            timeout: Some(10), connect_timeout: None, concurrency: None,
-            thinking_enabled: Some(false), thinking_budget: None,
-            thinking_glossary_budget: None, thinking_glossary_norm_budget: None,
+            driver: Driver::Anthropic,
+            base_url: base.into(),
+            api_key: "k".into(),
+            model: "claude-x".into(),
+            max_tokens: Some(16),
+            batch_dialogue_limit: None,
+            timeout: Some(10),
+            connect_timeout: None,
+            concurrency: None,
+            thinking_enabled: Some(false),
+            thinking_budget: None,
+            thinking_glossary_budget: None,
+            thinking_glossary_norm_budget: None,
             web_search: None,
         }
     }
@@ -174,7 +194,9 @@ mod tests {
             .mount(&server)
             .await;
         let err = AnthropicDriver::new(conn(&server.uri()))
-            .complete("s", "u").await.unwrap_err();
+            .complete("s", "u")
+            .await
+            .unwrap_err();
         assert!(err.is_auth());
     }
 
@@ -188,7 +210,10 @@ mod tests {
             })))
             .mount(&server)
             .await;
-        let models = AnthropicDriver::new(conn(&server.uri())).list_models().await.unwrap();
+        let models = AnthropicDriver::new(conn(&server.uri()))
+            .list_models()
+            .await
+            .unwrap();
         assert_eq!(models, vec!["claude-opus-4-5", "claude-haiku-4-5"]);
     }
 
@@ -220,7 +245,10 @@ mod tests {
             .await;
         let driver = AnthropicDriver::new(conn(&server.uri()));
         let resp = driver
-            .stream(&LlmRequest { system: "s".into(), user: "u".into() })
+            .stream(&LlmRequest {
+                system: "s".into(),
+                user: "u".into(),
+            })
             .await
             .unwrap();
         assert_eq!(resp.text, "Hello");
@@ -251,12 +279,21 @@ mod tests {
             .await;
         let driver = AnthropicDriver::new(conn(&server.uri()));
         let err = driver
-            .stream(&LlmRequest { system: "s".into(), user: "u".into() })
+            .stream(&LlmRequest {
+                system: "s".into(),
+                user: "u".into(),
+            })
             .await
             .unwrap_err();
-        assert!(err.is_retryable(), "provider stream error should be retryable, got: {err:?}");
+        assert!(
+            err.is_retryable(),
+            "provider stream error should be retryable, got: {err:?}"
+        );
         let msg = err.to_string();
-        assert!(msg.contains("provider stream error"), "unexpected message: {msg}");
+        assert!(
+            msg.contains("provider stream error"),
+            "unexpected message: {msg}"
+        );
     }
 
     /// A stage clone's budget must land in the request's thinking block.
@@ -304,7 +341,10 @@ mod tests {
             .await;
         let driver = AnthropicDriver::new(conn(&server.uri()));
         let err = driver
-            .stream(&LlmRequest { system: "s".into(), user: "u".into() })
+            .stream(&LlmRequest {
+                system: "s".into(),
+                user: "u".into(),
+            })
             .await
             .unwrap_err();
         let msg = err.to_string();

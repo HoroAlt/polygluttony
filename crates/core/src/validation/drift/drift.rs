@@ -2,8 +2,6 @@
 //! `validation/drift_detector.py`. Threshold 0.7; weights are calibrated —
 //! keep in sync with the Python reference.
 
-
-
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::validation::LinePair;
@@ -31,11 +29,26 @@ pub struct DriftReport {
 
 pub fn detect(pairs: &[LinePair], terms: &BTreeMap<String, String>) -> DriftReport {
     let raw: [(&'static str, crate::validation::drift::signals::Signal); 5] = [
-        ("punctuation", crate::validation::drift::signals::punctuation(pairs)),
-        ("glossary_position", crate::validation::drift::signals::glossary_position(pairs, terms)),
-        ("sentence_type", crate::validation::drift::signals::sentence_type(pairs)),
-        ("last_line", crate::validation::drift::signals::last_line(pairs, terms)),
-        ("length_ratio", crate::validation::drift::signals::length_ratio(pairs)),
+        (
+            "punctuation",
+            crate::validation::drift::signals::punctuation(pairs),
+        ),
+        (
+            "glossary_position",
+            crate::validation::drift::signals::glossary_position(pairs, terms),
+        ),
+        (
+            "sentence_type",
+            crate::validation::drift::signals::sentence_type(pairs),
+        ),
+        (
+            "last_line",
+            crate::validation::drift::signals::last_line(pairs, terms),
+        ),
+        (
+            "length_ratio",
+            crate::validation::drift::signals::length_ratio(pairs),
+        ),
     ];
 
     let mut report = DriftReport::default();
@@ -89,7 +102,11 @@ mod tests {
             (2, "我去市场。", "I am going to the market."),
         ]);
         let r = detect(&p, &BTreeMap::new());
-        assert!(!r.has_suspected_drift, "score {} signals {:?}", r.score, r.signals);
+        assert!(
+            !r.has_suspected_drift,
+            "score {} signals {:?}",
+            r.score, r.signals
+        );
     }
 
     #[test]
@@ -100,7 +117,11 @@ mod tests {
         terms.insert("星汉".to_string(), "Xinghan".to_string());
         let p = pairs(&[
             (1, "星汉你要去哪里？", "Banana."),
-            (2, "星汉在吗？", "The weather is extraordinarily pleasant today indeed truly."),
+            (
+                2,
+                "星汉在吗？",
+                "The weather is extraordinarily pleasant today indeed truly.",
+            ),
             (3, "好。", ""),
         ]);
         let r = detect(&p, &terms);
@@ -141,7 +162,8 @@ mod tests {
     #[test]
     fn signal_last_line_penalizes_empty_tail() {
         let p = pairs(&[(1, "好", "OK"), (2, "走吧", "")]);
-        let (score, _, flagged) = crate::validation::drift::signals::last_line(&p, &BTreeMap::new());
+        let (score, _, flagged) =
+            crate::validation::drift::signals::last_line(&p, &BTreeMap::new());
         assert!(score >= 1.0);
         assert!(flagged.contains(&2));
     }

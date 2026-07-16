@@ -184,9 +184,8 @@ impl LlmService {
                 Err(e) => {
                     if attempt < MAX_ATTEMPTS {
                         let jitter = rand::rng().random::<u64>() % 250;
-                        let backoff = Duration::from_millis(
-                            BASE_BACKOFF_MS * 2u64.pow(attempt - 1) + jitter,
-                        );
+                        let backoff =
+                            Duration::from_millis(BASE_BACKOFF_MS * 2u64.pow(attempt - 1) + jitter);
                         tokio::select! {
                             _ = self.cancel.cancelled() => {
                                 return Err(LlmError::Transport(CANCELLED_MSG.into()));
@@ -203,7 +202,13 @@ impl LlmService {
 }
 
 fn is_throttle(e: &LlmError) -> bool {
-    matches!(e, LlmError::Http { status: 429 | 529, .. })
+    matches!(
+        e,
+        LlmError::Http {
+            status: 429 | 529,
+            ..
+        }
+    )
 }
 
 #[cfg(test)]
@@ -221,7 +226,10 @@ mod tests {
     }
 
     fn req() -> LlmRequest {
-        LlmRequest { system: "s".into(), user: "u".into() }
+        LlmRequest {
+            system: "s".into(),
+            user: "u".into(),
+        }
     }
 
     #[tokio::test(start_paused = true)]
@@ -265,7 +273,11 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn throttle_halves_limit_and_success_streak_restores() {
         let d = ScriptedDriver::new(vec![
-            Err(LlmError::Http { status: 429, body: "slow down".into(), retry_after: None }),
+            Err(LlmError::Http {
+                status: 429,
+                body: "slow down".into(),
+                retry_after: None,
+            }),
             Ok("1".into()),
             Ok("2".into()),
             Ok("3".into()),
@@ -307,7 +319,11 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn throttle_pause_honors_retry_after_header() {
         let d = ScriptedDriver::new(vec![
-            Err(LlmError::Http { status: 429, body: "slow".into(), retry_after: Some(7) }),
+            Err(LlmError::Http {
+                status: 429,
+                body: "slow".into(),
+                retry_after: Some(7),
+            }),
             Ok("ok".into()),
         ]);
         let s = service(d, 2);
@@ -316,7 +332,11 @@ mod tests {
         assert_eq!(resp.text, "ok");
         // The retry's acquire must wait out the server-mandated 7s pause window;
         // computed backoff alone would be ~1s.
-        assert!(t0.elapsed() >= Duration::from_secs(7), "elapsed {:?}", t0.elapsed());
+        assert!(
+            t0.elapsed() >= Duration::from_secs(7),
+            "elapsed {:?}",
+            t0.elapsed()
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -329,17 +349,19 @@ mod tests {
         for _ in 0..8 {
             let s = s.clone();
             handles.push(tokio::spawn(async move {
-                s.request(LlmRequest { system: "s".into(), user: "u".into() }).await
+                s.request(LlmRequest {
+                    system: "s".into(),
+                    user: "u".into(),
+                })
+                .await
             }));
         }
         for h in handles {
-            assert!(
-                tokio::time::timeout(std::time::Duration::from_secs(10), h)
-                    .await
-                    .expect("no hang")
-                    .unwrap()
-                    .is_ok()
-            );
+            assert!(tokio::time::timeout(std::time::Duration::from_secs(10), h)
+                .await
+                .expect("no hang")
+                .unwrap()
+                .is_ok());
         }
     }
 }

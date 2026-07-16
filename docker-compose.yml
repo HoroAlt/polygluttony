@@ -1,0 +1,32 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: anitranslate-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  anitranslate:
+    build: .
+    container_name: anitranslate
+    environment:
+      - ANITRANSLATE_DATA_DIR=/data
+      - OLLAMA_HOST=http://ollama:11434
+    volumes:
+      - anitranslate-data:/data
+      - ./subs:/work:ro
+    working_dir: /work
+    command: ["translate", "-f", "/work", "-s", "en", "-t", "ru"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+volumes:
+  ollama-data:
+  anitranslate-data:

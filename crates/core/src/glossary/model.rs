@@ -6,8 +6,14 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 /* ts_rs removed */
 
-pub const CATEGORIES: [&str; 6] =
-    ["characters", "cultivation", "skills", "locations", "items", "organizations"];
+pub const CATEGORIES: [&str; 6] = [
+    "characters",
+    "cultivation",
+    "skills",
+    "locations",
+    "items",
+    "organizations",
+];
 
 fn header(category: &str) -> &'static str {
     match category {
@@ -35,7 +41,11 @@ impl From<&Glossary> for GlossaryDoc {
         for c in CATEGORIES {
             terms.insert(c.to_string(), g.category(c).clone());
         }
-        GlossaryDoc { world_type: g.world_type.clone(), terms, count: g.count() as u32 }
+        GlossaryDoc {
+            world_type: g.world_type.clone(),
+            terms,
+            count: g.count() as u32,
+        }
     }
 }
 
@@ -67,7 +77,10 @@ pub struct Glossary {
 
 impl Glossary {
     pub fn new(world_type: &str) -> Self {
-        Glossary { world_type: world_type.into(), ..Default::default() }
+        Glossary {
+            world_type: world_type.into(),
+            ..Default::default()
+        }
     }
 
     pub fn category(&self, name: &str) -> &BTreeMap<String, String> {
@@ -139,7 +152,12 @@ impl Glossary {
             return src.to_string();
         }
         let mut terms: Vec<(&String, &String)> = self.all_terms_ref();
-        terms.sort_by(|a, b| b.0.chars().count().cmp(&a.0.chars().count()).then(a.0.cmp(b.0)));
+        terms.sort_by(|a, b| {
+            b.0.chars()
+                .count()
+                .cmp(&a.0.chars().count())
+                .then(a.0.cmp(b.0))
+        });
 
         let chars: Vec<char> = src.chars().collect();
         let mut out = String::with_capacity(src.len());
@@ -195,7 +213,9 @@ impl Glossary {
 
     /// True if `key` exists in ANY category (`glossary.py:149-158`).
     pub fn has_key(&self, key: &str) -> bool {
-        CATEGORIES.iter().any(|c| self.category(c).contains_key(key))
+        CATEGORIES
+            .iter()
+            .any(|c| self.category(c).contains_key(key))
     }
 
     /// Reject empty/whitespace-only or absurdly long values (likely
@@ -212,7 +232,8 @@ impl Glossary {
         for c in CATEGORIES {
             for (source, translation) in other.category(c) {
                 if !self.has_key(source) && Self::is_valid_translation(translation) {
-                    self.category_mut(c).insert(source.clone(), translation.trim().to_string());
+                    self.category_mut(c)
+                        .insert(source.clone(), translation.trim().to_string());
                 }
             }
         }
@@ -230,7 +251,8 @@ impl Glossary {
     /// can restore valid originals for those keys.
     pub(crate) fn scrub_invalid(&mut self) {
         for c in CATEGORIES {
-            self.category_mut(c).retain(|_, v| Self::is_valid_translation(v));
+            self.category_mut(c)
+                .retain(|_, v| Self::is_valid_translation(v));
         }
     }
 
@@ -282,7 +304,10 @@ impl Glossary {
     /// `None` only if the document isn't JSON at all.
     pub fn from_json(s: &str) -> Option<Glossary> {
         let v: serde_json::Value = serde_json::from_str(s).ok()?;
-        let world = v.get("world_type").and_then(|w| w.as_str()).unwrap_or("xianxia");
+        let world = v
+            .get("world_type")
+            .and_then(|w| w.as_str())
+            .unwrap_or("xianxia");
         // Re-use from_terms_value: it accepts the whole doc and finds "terms"
         // itself (or treats it as bare categories), and already sets world_type.
         Some(Glossary::from_terms_value(&v, world))
@@ -316,7 +341,8 @@ mod tests {
     #[test]
     fn from_json_tolerates_garbage() {
         assert!(Glossary::from_json("not json").is_none());
-        let g = Glossary::from_json(r#"{"world_type":"modern","terms":{"characters":{"a":1}}}"#).unwrap();
+        let g = Glossary::from_json(r#"{"world_type":"modern","terms":{"characters":{"a":1}}}"#)
+            .unwrap();
         assert!(g.characters.is_empty()); // non-string values dropped
     }
 
@@ -359,7 +385,8 @@ mod tests {
         a.characters.insert("林动".into(), "Lin Dong".into());
         let mut b = Glossary::new("xianxia");
         b.characters.insert("林动".into(), "WRONG".into()); // existing key — ignored
-        b.characters.insert("应欢欢".into(), "  Ying Huanhuan  ".into()); // trimmed on insert
+        b.characters
+            .insert("应欢欢".into(), "  Ying Huanhuan  ".into()); // trimmed on insert
         b.locations.insert("林动".into(), "Cross-cat dup".into()); // dup across categories — ignored
         b.items.insert("空".into(), "   ".into()); // whitespace-only — rejected
         b.skills.insert("长".into(), "x".repeat(201)); // >200 chars — rejected
@@ -403,9 +430,10 @@ mod tests {
 
     #[test]
     fn from_terms_value_accepts_wrapped_and_bare() {
-        let wrapped: serde_json::Value =
-            serde_json::from_str(r#"{"terms":{"characters":{"林动":"Lin Dong"},"items":{"bad":1}}}"#)
-                .unwrap();
+        let wrapped: serde_json::Value = serde_json::from_str(
+            r#"{"terms":{"characters":{"林动":"Lin Dong"},"items":{"bad":1}}}"#,
+        )
+        .unwrap();
         let g = Glossary::from_terms_value(&wrapped, "wuxia");
         assert_eq!(g.world_type, "wuxia");
         assert_eq!(g.characters.get("林动").unwrap(), "Lin Dong");

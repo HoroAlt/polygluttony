@@ -48,7 +48,10 @@ impl LlmDriver for ScriptedDriver {
             .unwrap()
             .pop_front()
             .expect("ScriptedDriver: script exhausted");
-        next.map(|text| LlmResponse { text, usage: Usage::default() })
+        next.map(|text| LlmResponse {
+            text,
+            usage: Usage::default(),
+        })
     }
     async fn list_models(&self) -> Result<Vec<String>, LlmError> {
         Ok(vec![])

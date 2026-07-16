@@ -101,14 +101,20 @@ impl Connection {
         ];
         for (label, value) in budgets {
             let Some(v) = value else {
-                return Some(format!("{label} budget is required when thinking is enabled"));
+                return Some(format!(
+                    "{label} budget is required when thinking is enabled"
+                ));
             };
             if v < MIN_BUDGET {
-                return Some(format!("{label} budget must be at least {MIN_BUDGET} tokens"));
+                return Some(format!(
+                    "{label} budget must be at least {MIN_BUDGET} tokens"
+                ));
             }
             if let Some(max) = self.max_tokens {
                 if v >= max {
-                    return Some(format!("{label} budget must be less than max tokens ({max})"));
+                    return Some(format!(
+                        "{label} budget must be less than max tokens ({max})"
+                    ));
                 }
             }
         }
@@ -208,12 +214,20 @@ mod tests {
 
     fn thinking_conn() -> Connection {
         Connection {
-            driver: Driver::Anthropic, base_url: "https://x".into(), api_key: "k".into(),
-            model: "m".into(), max_tokens: Some(16000), batch_dialogue_limit: None,
-            timeout: None, connect_timeout: None, concurrency: None,
-            thinking_enabled: Some(true), thinking_budget: Some(6000),
+            driver: Driver::Anthropic,
+            base_url: "https://x".into(),
+            api_key: "k".into(),
+            model: "m".into(),
+            max_tokens: Some(16000),
+            batch_dialogue_limit: None,
+            timeout: None,
+            connect_timeout: None,
+            concurrency: None,
+            thinking_enabled: Some(true),
+            thinking_budget: Some(6000),
             thinking_glossary_budget: Some(12000),
-            thinking_glossary_norm_budget: Some(24000), web_search: None,
+            thinking_glossary_norm_budget: Some(24000),
+            web_search: None,
         }
     }
 
@@ -240,7 +254,10 @@ mod tests {
         let mut c = thinking_conn();
         assert_eq!(c.thinking_config_error(), None);
         c.thinking_budget = None;
-        assert!(c.thinking_config_error().unwrap().contains("no thinking budget"));
+        assert!(c
+            .thinking_config_error()
+            .unwrap()
+            .contains("no thinking budget"));
         c.thinking_enabled = Some(false);
         assert_eq!(c.thinking_config_error(), None);
     }

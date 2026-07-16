@@ -51,11 +51,7 @@ pub fn render_translated(original: &str, translated: &[DialogueLine]) -> String 
 }
 
 /// Write to disk (UTF-8 + BOM is already part of the rendered string).
-pub fn write_translated(
-    path: &Path,
-    original: &str,
-    translated: &[DialogueLine],
-) -> AppResult<()> {
+pub fn write_translated(path: &Path, original: &str, translated: &[DialogueLine]) -> AppResult<()> {
     std::fs::write(path, render_translated(original, translated))?;
     Ok(())
 }

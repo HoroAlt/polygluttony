@@ -83,14 +83,21 @@ pub fn normalize_user_prompt(terms: &BTreeMap<String, String>) -> String {
 /// `{donghua_title}` = first context line or "Unknown"
 /// (`glossary_builder.py:548-553`).
 pub fn personalize_prompt(template: &str, world: &str, context: &str) -> String {
-    let title =
-        context.lines().next().map(str::trim).filter(|t| !t.is_empty()).unwrap_or("Unknown");
+    let title = context
+        .lines()
+        .next()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .unwrap_or("Unknown");
     crate::prompts::fill(template, &[("donghua_title", title), ("world_type", world)])
 }
 
 /// `glossary_builder.py:554-556`.
 pub fn personalize_user_prompt(glossary: &Glossary, context: &str) -> String {
-    let mut u = format!("Personalize this glossary:\n\n{}", glossary.to_json_pretty());
+    let mut u = format!(
+        "Personalize this glossary:\n\n{}",
+        glossary.to_json_pretty()
+    );
     if !context.is_empty() {
         u.push_str(&format!("\n\n## Additional Context\n\n{context}"));
     }
@@ -114,7 +121,10 @@ mod tests {
     #[test]
     fn extraction_prompt_fills_both_cases_and_strips_established() {
         let p = extraction_prompt(extract_tpl(), "wuxia", &pair(), None);
-        assert!(!p.contains("{world_type}"), "lowercase placeholder must be filled");
+        assert!(
+            !p.contains("{world_type}"),
+            "lowercase placeholder must be filled"
+        );
         assert!(!p.contains("{WORLD_TYPE}"));
         assert!(p.contains("wuxia"));
         // Established section always stripped (build never passes context).
@@ -148,7 +158,10 @@ mod tests {
         assert!(result.contains("## INTRO\nkeep this\n"), "prefix intact");
         assert!(!result.contains("REMOVE ME"), "section heading gone");
         assert!(!result.contains("drop this"), "section body gone");
-        assert!(result.contains("## OUTRO\nkeep too"), "suffix intact, flush");
+        assert!(
+            result.contains("## OUTRO\nkeep too"),
+            "suffix intact, flush"
+        );
     }
 
     #[test]
@@ -158,9 +171,15 @@ mod tests {
         let result = strip_section(text, "LAST");
         assert!(result.contains("## FIRST\nkeep\n"), "prefix intact");
         assert!(!result.contains("LAST"), "section heading gone");
-        assert!(!result.contains("drop everything here"), "trailing body gone");
+        assert!(
+            !result.contains("drop everything here"),
+            "trailing body gone"
+        );
         // Nothing after the stripped section.
-        assert!(result.ends_with("keep\n") || result.ends_with("keep"), "no trailing junk");
+        assert!(
+            result.ends_with("keep\n") || result.ends_with("keep"),
+            "no trailing junk"
+        );
     }
 
     #[test]
@@ -188,7 +207,10 @@ mod tests {
         let text = "## DUP\nfirst body\n## OTHER\nmiddle\n## DUP\nsecond body";
         let result = strip_section(text, "DUP");
         assert!(!result.contains("first body"), "first instance stripped");
-        assert!(result.contains("## DUP\nsecond body"), "second instance preserved");
+        assert!(
+            result.contains("## DUP\nsecond body"),
+            "second instance preserved"
+        );
     }
 
     #[test]

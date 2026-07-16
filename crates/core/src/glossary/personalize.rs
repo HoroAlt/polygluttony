@@ -21,13 +21,19 @@ pub async fn personalize_pass(
     context: &str,
     template: &str,
 ) -> Result<Glossary, String> {
-    let world =
-        if glossary.world_type.is_empty() { "modern" } else { glossary.world_type.as_str() };
+    let world = if glossary.world_type.is_empty() {
+        "modern"
+    } else {
+        glossary.world_type.as_str()
+    };
     let req = LlmRequest {
         system: prompts::personalize_prompt(template, world, context),
         user: prompts::personalize_user_prompt(glossary, context),
     };
-    let resp = svc.request(req).await.map_err(|e| format!("personalize request failed: {e}"))?;
+    let resp = svc
+        .request(req)
+        .await
+        .map_err(|e| format!("personalize request failed: {e}"))?;
     let v = parse_response::extract_object(&resp.text)
         .map_err(|e| format!("personalize response unparseable: {e}"))?;
     let mut out = Glossary::from_terms_value(&v, &glossary.world_type);
@@ -74,7 +80,14 @@ mod tests {
         let d = ScriptedDriver::new(vec![Ok(
             r#"{"world_type":"xianxia","terms":{"characters":{"林动":"Lin Dong (MC)"}}}"#.into(),
         )]);
-        let out = personalize_pass(&svc(d.clone()), &glossary(), "Martial Universe", personalize_tpl()).await.unwrap();
+        let out = personalize_pass(
+            &svc(d.clone()),
+            &glossary(),
+            "Martial Universe",
+            personalize_tpl(),
+        )
+        .await
+        .unwrap();
         assert_eq!(out.characters.get("林动").unwrap(), "Lin Dong (MC)");
         // Prompt carried the title + glossary JSON.
         let req = d.last_request().unwrap();
@@ -84,17 +97,33 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn request_failure_returns_err() {
-        let d = ScriptedDriver::new(vec![Err(LlmError::Http { status: 401, body: "no".into(), retry_after: None })]);
-        assert!(personalize_pass(&svc(d), &glossary(), "", personalize_tpl()).await.is_err());
+        let d = ScriptedDriver::new(vec![Err(LlmError::Http {
+            status: 401,
+            body: "no".into(),
+            retry_after: None,
+        })]);
+        assert!(
+            personalize_pass(&svc(d), &glossary(), "", personalize_tpl())
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test(start_paused = true)]
     async fn empty_or_unparseable_response_returns_err() {
         let d = ScriptedDriver::new(vec![Ok("sorry, no JSON".into())]);
-        assert!(personalize_pass(&svc(d), &glossary(), "", personalize_tpl()).await.is_err());
+        assert!(
+            personalize_pass(&svc(d), &glossary(), "", personalize_tpl())
+                .await
+                .is_err()
+        );
         // Parses but contains zero terms → would wipe the glossary → Err.
         let d = ScriptedDriver::new(vec![Ok(r#"{"terms":{}}"#.into())]);
-        assert!(personalize_pass(&svc(d), &glossary(), "", personalize_tpl()).await.is_err());
+        assert!(
+            personalize_pass(&svc(d), &glossary(), "", personalize_tpl())
+                .await
+                .is_err()
+        );
     }
 
     /// A truncated response must not drop terms it did not mention.
@@ -105,13 +134,17 @@ mod tests {
         // Original: one character + one location.
         let mut original = Glossary::new("xianxia");
         original.characters.insert("林动".into(), "Lin Dong".into());
-        original.locations.insert("青阳镇".into(), "Qingyang Town".into());
+        original
+            .locations
+            .insert("青阳镇".into(), "Qingyang Town".into());
 
         // Response: only the character, renamed — location is omitted (truncation).
         let d = ScriptedDriver::new(vec![Ok(
             r#"{"characters":{"林动":"Lin Dong (Rock Saint)"}}"#.into(),
         )]);
-        let out = personalize_pass(&svc(d), &original, "ctx", personalize_tpl()).await.unwrap();
+        let out = personalize_pass(&svc(d), &original, "ctx", personalize_tpl())
+            .await
+            .unwrap();
 
         // (a) Response's rename wins.
         assert_eq!(out.characters.get("林动").unwrap(), "Lin Dong (Rock Saint)");
@@ -135,7 +168,9 @@ mod tests {
         let d = ScriptedDriver::new(vec![Ok(
             r#"{"characters":{"林动":"","小炎":"Little Flame"}}"#.into(),
         )]);
-        let out = personalize_pass(&svc(d), &original, "ctx", personalize_tpl()).await.unwrap();
+        let out = personalize_pass(&svc(d), &original, "ctx", personalize_tpl())
+            .await
+            .unwrap();
 
         // 林动's empty response value must be discarded; original "Lin Dong" restored.
         assert_eq!(out.characters.get("林动").unwrap(), "Lin Dong");
@@ -169,8 +204,16 @@ mod tests {
             "world_type placeholder must be filled: {:?}",
             req.system
         );
-        assert!(req.system.contains("Martial Universe"), "title must appear: {:?}", req.system);
-        assert!(req.system.contains("xianxia"), "world value must appear: {:?}", req.system);
+        assert!(
+            req.system.contains("Martial Universe"),
+            "title must appear: {:?}",
+            req.system
+        );
+        assert!(
+            req.system.contains("xianxia"),
+            "world value must appear: {:?}",
+            req.system
+        );
     }
 
     /// Pin the "modern" fallback: a glossary with an empty world_type should
@@ -180,10 +223,15 @@ mod tests {
         let mut g = Glossary::new("");
         g.characters.insert("林动".into(), "Lin Dong".into());
         let d = ScriptedDriver::new(vec![Ok(
-            r#"{"terms":{"characters":{"林动":"Lin Dong"}}}"#.into(),
+            r#"{"terms":{"characters":{"林动":"Lin Dong"}}}"#.into()
         )]);
-        personalize_pass(&svc(d.clone()), &g, "", personalize_tpl()).await.unwrap();
+        personalize_pass(&svc(d.clone()), &g, "", personalize_tpl())
+            .await
+            .unwrap();
         let req = d.last_request().unwrap();
-        assert!(req.system.contains("modern"), "expected 'modern' in system prompt");
+        assert!(
+            req.system.contains("modern"),
+            "expected 'modern' in system prompt"
+        );
     }
 }

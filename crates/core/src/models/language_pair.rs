@@ -115,14 +115,26 @@ mod tests {
     #[test]
     fn output_and_warning_filenames() {
         let p = LanguagePair::from_codes("zh", "en").unwrap();
-        assert_eq!(output_filename(Path::new("/x/ep01.ass"), &p), "ep01.eng.ass");
-        assert_eq!(output_filename(Path::new("/x/ep01.chi.ass"), &p), "ep01.eng.ass");
-        assert_eq!(warning_filename(Path::new("/x/ep01.ass"), &p), "ep01.warning.eng.ass");
+        assert_eq!(
+            output_filename(Path::new("/x/ep01.ass"), &p),
+            "ep01.eng.ass"
+        );
+        assert_eq!(
+            output_filename(Path::new("/x/ep01.chi.ass"), &p),
+            "ep01.eng.ass"
+        );
+        assert_eq!(
+            warning_filename(Path::new("/x/ep01.ass"), &p),
+            "ep01.warning.eng.ass"
+        );
     }
 
     #[test]
     fn target_suffixes_include_code_when_different() {
         let p = LanguagePair::from_codes("zh", "en").unwrap();
-        assert_eq!(p.target_suffixes(), vec!["eng".to_string(), "en".to_string()]);
+        assert_eq!(
+            p.target_suffixes(),
+            vec!["eng".to_string(), "en".to_string()]
+        );
     }
 }

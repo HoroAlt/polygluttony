@@ -37,17 +37,29 @@ pub async fn cleanup_pass(
         .collect();
 
     if dirty.is_empty() {
-        return CleanupReport { cleaned: vec![], failed: vec![], skipped_too_many: false, fatal: None };
+        return CleanupReport {
+            cleaned: vec![],
+            failed: vec![],
+            skipped_too_many: false,
+            fatal: None,
+        };
     }
     if dirty.len() > MAX_CLEANUP_LINES {
-        return CleanupReport { cleaned: vec![], failed: dirty, skipped_too_many: true, fatal: None };
+        return CleanupReport {
+            cleaned: vec![],
+            failed: dirty,
+            skipped_too_many: true,
+            fatal: None,
+        };
     }
 
     let mut cleaned: Vec<u32> = Vec::new();
     let mut fatal: Option<String> = None;
     for _ in 0..MAX_CLEANUP_ITERATIONS {
-        let raw: Vec<(u32, String)> =
-            dirty.iter().filter_map(|id| sources.get(id).map(|s| (*id, s.clone()))).collect();
+        let raw: Vec<(u32, String)> = dirty
+            .iter()
+            .filter_map(|id| sources.get(id).map(|s| (*id, s.clone())))
+            .collect();
         let outcome = batch::translate_batch_tagged(svc, &raw, glossary, &[], settings).await;
         let map = match outcome {
             BatchOutcome::Success(m) => m,
@@ -78,7 +90,12 @@ pub async fn cleanup_pass(
             break;
         }
     }
-    CleanupReport { cleaned, failed: dirty, skipped_too_many: false, fatal }
+    CleanupReport {
+        cleaned,
+        failed: dirty,
+        skipped_too_many: false,
+        fatal,
+    }
 }
 
 #[cfg(test)]
@@ -95,7 +112,10 @@ mod tests {
     ) -> (LlmService, Arc<ScriptedDriver>) {
         let driver = ScriptedDriver::new(responses);
         let (tx, _rx) = tokio::sync::mpsc::channel(64);
-        (LlmService::new(driver.clone(), 2, CancellationToken::new(), tx), driver)
+        (
+            LlmService::new(driver.clone(), 2, CancellationToken::new(), tx),
+            driver,
+        )
     }
 
     fn settings() -> BatchSettings {
@@ -114,11 +134,18 @@ mod tests {
     async fn skips_when_too_many_lines_are_dirty() {
         let (svc, driver) = service(vec![]);
         let sources: BTreeMap<u32, String> = (1..=11).map(|i| (i, "中文".to_string())).collect();
-        let mut translations: BTreeMap<u32, String> =
-            (1..=11).map(|i| (i, "还是中文的翻译".to_string())).collect();
-        let report =
-            cleanup_pass(&svc, &zh(), &sources, &mut translations, &Glossary::default(), &settings())
-                .await;
+        let mut translations: BTreeMap<u32, String> = (1..=11)
+            .map(|i| (i, "还是中文的翻译".to_string()))
+            .collect();
+        let report = cleanup_pass(
+            &svc,
+            &zh(),
+            &sources,
+            &mut translations,
+            &Glossary::default(),
+            &settings(),
+        )
+        .await;
         assert!(report.skipped_too_many);
         assert_eq!(report.failed.len(), 11);
         assert!(report.cleaned.is_empty());
@@ -127,14 +154,21 @@ mod tests {
 
     #[tokio::test]
     async fn cleans_dirty_lines_in_place() {
-        let (svc, driver) =
-            service(vec![Ok(r#"[{"id":1,"tgt":"<0001:D> Clean now friend"}]"#.into())]);
+        let (svc, driver) = service(vec![Ok(
+            r#"[{"id":1,"tgt":"<0001:D> Clean now friend"}]"#.into()
+        )]);
         let sources: BTreeMap<u32, String> = [(1, "你好".to_string())].into();
         let mut translations: BTreeMap<u32, String> =
             [(1, "你好 leftover 中文 text".to_string())].into();
-        let report =
-            cleanup_pass(&svc, &zh(), &sources, &mut translations, &Glossary::default(), &settings())
-                .await;
+        let report = cleanup_pass(
+            &svc,
+            &zh(),
+            &sources,
+            &mut translations,
+            &Glossary::default(),
+            &settings(),
+        )
+        .await;
         assert_eq!(report.cleaned, vec![1]);
         assert!(report.failed.is_empty());
         assert!(!report.skipped_too_many);
@@ -144,15 +178,23 @@ mod tests {
 
     #[tokio::test]
     async fn gives_up_after_max_iterations() {
-        let still_dirty = || Ok::<_, crate::llm::error::LlmError>(
-            r#"[{"id":1,"tgt":"<0001:D> 还是中文"}]"#.to_string(),
-        );
+        let still_dirty = || {
+            Ok::<_, crate::llm::error::LlmError>(
+                r#"[{"id":1,"tgt":"<0001:D> 还是中文"}]"#.to_string(),
+            )
+        };
         let (svc, driver) = service(vec![still_dirty(), still_dirty(), still_dirty()]);
         let sources: BTreeMap<u32, String> = [(1, "你好".to_string())].into();
         let mut translations: BTreeMap<u32, String> = [(1, "全是中文的翻译".to_string())].into();
-        let report =
-            cleanup_pass(&svc, &zh(), &sources, &mut translations, &Glossary::default(), &settings())
-                .await;
+        let report = cleanup_pass(
+            &svc,
+            &zh(),
+            &sources,
+            &mut translations,
+            &Glossary::default(),
+            &settings(),
+        )
+        .await;
         assert!(report.cleaned.is_empty());
         assert_eq!(report.failed, vec![1]);
         // Dirty re-translations are never merged.
@@ -166,10 +208,15 @@ mod tests {
         // (clean) in every iteration, never mentioning id 2. Without the fix,
         // id 2 silently vanishes; with the fix it stays dirty and ends up in
         // `failed` once iterations exhaust.
-        let clean_only_id1 =
-            || Ok::<_, crate::llm::error::LlmError>(r#"[{"id":1,"tgt":"<0001:D> Clean now"}]"#.to_string());
+        let clean_only_id1 = || {
+            Ok::<_, crate::llm::error::LlmError>(
+                r#"[{"id":1,"tgt":"<0001:D> Clean now"}]"#.to_string(),
+            )
+        };
         // Supply MAX_CLEANUP_ITERATIONS responses; id 2 is never returned.
-        let responses: Vec<_> = (0..MAX_CLEANUP_ITERATIONS).map(|_| clean_only_id1()).collect();
+        let responses: Vec<_> = (0..MAX_CLEANUP_ITERATIONS)
+            .map(|_| clean_only_id1())
+            .collect();
         let (svc, driver) = service(responses);
         let sources: BTreeMap<u32, String> =
             [(1, "你好".to_string()), (2, "再见".to_string())].into();
@@ -178,13 +225,22 @@ mod tests {
             (2, "再见 leftover 中文".to_string()),
         ]
         .into();
-        let report =
-            cleanup_pass(&svc, &zh(), &sources, &mut translations, &Glossary::default(), &settings())
-                .await;
+        let report = cleanup_pass(
+            &svc,
+            &zh(),
+            &sources,
+            &mut translations,
+            &Glossary::default(),
+            &settings(),
+        )
+        .await;
         // Id 1 was returned clean — cleaned.
         assert!(report.cleaned.contains(&1), "id 1 should be cleaned");
         // Id 2 was never returned — must appear in failed, not silently dropped.
-        assert!(report.failed.contains(&2), "id 2 must be in failed (unreturned)");
+        assert!(
+            report.failed.contains(&2),
+            "id 2 must be in failed (unreturned)"
+        );
         assert_eq!(driver.call_count(), MAX_CLEANUP_ITERATIONS);
     }
 
@@ -197,11 +253,20 @@ mod tests {
         })]);
         let sources: BTreeMap<u32, String> = [(1, "你好".to_string())].into();
         let mut translations: BTreeMap<u32, String> = [(1, "全是中文的翻译".to_string())].into();
-        let report =
-            cleanup_pass(&svc, &zh(), &sources, &mut translations, &Glossary::default(), &settings())
-                .await;
+        let report = cleanup_pass(
+            &svc,
+            &zh(),
+            &sources,
+            &mut translations,
+            &Glossary::default(),
+            &settings(),
+        )
+        .await;
         assert_eq!(report.failed, vec![1]);
         assert_eq!(driver.call_count(), 1); // not 3 — break, don't continue
-        assert!(report.fatal.is_some(), "fatal must be surfaced to the pipeline");
+        assert!(
+            report.fatal.is_some(),
+            "fatal must be surfaced to the pipeline"
+        );
     }
 }

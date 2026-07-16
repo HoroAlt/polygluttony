@@ -112,9 +112,11 @@ mod tests {
     #[tokio::test]
     async fn detects_openai_when_chat_route_exists() {
         let server = MockServer::start().await;
-        Mock::given(method("POST")).and(path("/chat/completions"))
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
             .respond_with(ResponseTemplate::new(401)) // exists but bad key
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         // No /v1/messages mounted -> wiremock returns 404 for it.
         let d = detect_format(&server.uri(), "k").await.unwrap();
         assert_eq!(d, Driver::Openai);
@@ -123,9 +125,11 @@ mod tests {
     #[tokio::test]
     async fn detects_anthropic_when_only_messages_route_exists() {
         let server = MockServer::start().await;
-        Mock::given(method("POST")).and(path("/v1/messages"))
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
             .respond_with(ResponseTemplate::new(400))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let d = detect_format(&server.uri(), "k").await.unwrap();
         assert_eq!(d, Driver::Anthropic);
     }
@@ -143,14 +147,18 @@ mod tests {
     #[tokio::test]
     async fn soft_404_on_openai_route_still_detects_anthropic() {
         let server = MockServer::start().await;
-        Mock::given(method("POST")).and(path("/chat/completions"))
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "code": 500, "msg": "404 NOT_FOUND", "success": false
             })))
-            .mount(&server).await;
-        Mock::given(method("POST")).and(path("/v1/messages"))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
             .respond_with(ResponseTemplate::new(401)) // exists, bad key
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let d = detect_format(&server.uri(), "k").await.unwrap();
         assert_eq!(d, Driver::Anthropic);
     }
@@ -160,11 +168,13 @@ mod tests {
     #[tokio::test]
     async fn genuine_openai_200_still_detects_openai() {
         let server = MockServer::start().await;
-        Mock::given(method("POST")).and(path("/chat/completions"))
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "object": "chat.completion", "choices": []
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let d = detect_format(&server.uri(), "k").await.unwrap();
         assert_eq!(d, Driver::Openai);
     }
@@ -176,10 +186,16 @@ mod tests {
         let soft = ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "code": 500, "msg": "404 NOT_FOUND", "success": false
         }));
-        Mock::given(method("POST")).and(path("/chat/completions"))
-            .respond_with(soft.clone()).mount(&server).await;
-        Mock::given(method("POST")).and(path("/v1/messages"))
-            .respond_with(soft).mount(&server).await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(soft.clone())
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(soft)
+            .mount(&server)
+            .await;
         assert!(detect_format(&server.uri(), "k").await.is_err());
     }
 }

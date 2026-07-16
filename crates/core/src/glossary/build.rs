@@ -102,8 +102,12 @@ pub async fn build_glossary(
             Ok(text) => {
                 let dialogues = parse_dialogues(&text);
                 if dialogues.is_empty() {
-                    log(&tx, LogLevel::Warning, format!("no dialogue text in {name} — skipped"))
-                        .await;
+                    log(
+                        &tx,
+                        LogLevel::Warning,
+                        format!("no dialogue text in {name} — skipped"),
+                    )
+                    .await;
                     continue;
                 }
                 let n = dialogues.len();
@@ -112,7 +116,12 @@ pub async fn build_glossary(
                 log(&tx, LogLevel::Info, format!("loaded {name} ({n} lines)")).await;
             }
             Err(e) => {
-                log(&tx, LogLevel::Warning, format!("error loading {name}: {e} — skipped")).await;
+                log(
+                    &tx,
+                    LogLevel::Warning,
+                    format!("error loading {name}: {e} — skipped"),
+                )
+                .await;
             }
         }
     }
@@ -141,14 +150,24 @@ pub async fn build_glossary(
 
     // ── Reference: advisory English terminology (O11, logs for itself) ─────
     phase(&tx, GlossaryPhase::Reference, None).await;
-    let (reference_terms, reference_errors) =
-        reference::load_or_extract(&job.folder, svc, job.batch_limit, &tx, &job.prompts.reference)
-            .await;
+    let (reference_terms, reference_errors) = reference::load_or_extract(
+        &job.folder,
+        svc,
+        job.batch_limit,
+        &tx,
+        &job.prompts.reference,
+    )
+    .await;
 
     // ── Extracting: all batches through the LLM, one shared system prompt ──
     let batches = glossary_batches(&all_lines, job.batch_limit);
     let total = batches.len() as u32;
-    phase(&tx, GlossaryPhase::Extracting, Some(format!("{total} batches"))).await;
+    phase(
+        &tx,
+        GlossaryPhase::Extracting,
+        Some(format!("{total} batches")),
+    )
+    .await;
     let _ = tx.send(GlossaryEvent::Progress { done: 0, total }).await;
 
     let system = prompts::extraction_prompt(
@@ -174,7 +193,9 @@ pub async fn build_glossary(
     // head-of-line-blocks the stream the way in-order consumption does. The
     // authoritative first-wins merge still happens in batch order below; this is
     // purely for the live "terms streaming into lanes" feedback.
-    let seen = std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::BTreeSet::<String>::new()));
+    let seen = std::sync::Arc::new(tokio::sync::Mutex::new(
+        std::collections::BTreeSet::<String>::new(),
+    ));
     let world = job.world_type.clone();
     let mut futs: FuturesOrdered<_> = batches
         .iter()
@@ -267,7 +288,12 @@ pub async fn build_glossary(
                         .await;
                     }
                 }
-                log(&tx, LogLevel::Info, format!("batch {n}/{total}: {count} terms")).await;
+                log(
+                    &tx,
+                    LogLevel::Info,
+                    format!("batch {n}/{total}: {count} terms"),
+                )
+                .await;
             }
             Err(e) if e.is_auth() && !aborted => {
                 // Retrying won't fix credentials: stop the REMAINING batches,
@@ -288,7 +314,12 @@ pub async fn build_glossary(
             Err(e) => {
                 let noise = (aborted || job.cancel.is_cancelled()) && e.is_cancelled();
                 if !noise {
-                    log(&tx, LogLevel::Warning, format!("batch {n}/{total} failed: {e}")).await;
+                    log(
+                        &tx,
+                        LogLevel::Warning,
+                        format!("batch {n}/{total} failed: {e}"),
+                    )
+                    .await;
                     errors.push(format!("batch {n}/{total} failed: {e}"));
                 }
             }
@@ -310,7 +341,8 @@ pub async fn build_glossary(
             Some(format!("{} new terms", new_terms.count())),
         )
         .await;
-        new_terms = normalize::normalize_pass(norm_svc, &new_terms, &tx, &job.prompts.normalize).await;
+        new_terms =
+            normalize::normalize_pass(norm_svc, &new_terms, &tx, &job.prompts.normalize).await;
         // A cancel mid-normalize reports normalized=false even though some
         // categories may already have been normalized (each keeps its original
         // terms on failure, so the data is valid either way) — conservative
@@ -519,8 +551,12 @@ mod tests {
         write_ass(dir.path(), "e1.ass", &["一", "二"]);
         let cancel = CancellationToken::new();
         let d = ScriptedDriver::new(vec![
-            Err(LlmError::Http { status: 400, body: "bad request".into(), retry_after: None }), // batch 1: non-retryable, one call
-            Ok(r#"{"characters":{"林动":"Lin Dong"}}"#.into()),              // batch 2 ok
+            Err(LlmError::Http {
+                status: 400,
+                body: "bad request".into(),
+                retry_after: None,
+            }), // batch 1: non-retryable, one call
+            Ok(r#"{"characters":{"林动":"Lin Dong"}}"#.into()), // batch 2 ok
         ]);
         let svc = svc1(d, cancel.clone());
         let (_events, s) =
@@ -539,14 +575,20 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         // Existing glossary on disk — must survive verbatim (crash-safety fix).
         let mut existing = Glossary::new("xianxia");
-        existing.characters.insert("应欢欢".into(), "Ying Huanhuan".into());
+        existing
+            .characters
+            .insert("应欢欢".into(), "Ying Huanhuan".into());
         crate::glossary::io::save_folder_glossary(dir.path(), &existing).unwrap();
 
         write_ass(dir.path(), "e1.ass", &["一", "二"]);
         let cancel = CancellationToken::new();
         let d = ScriptedDriver::new(vec![
             Ok(r#"{"characters":{"林动":"Lin Dong"}}"#.into()), // batch 1 ok
-            Err(LlmError::Http { status: 401, body: "bad key".into(), retry_after: None }), // batch 2: auth, no retry
+            Err(LlmError::Http {
+                status: 401,
+                body: "bad key".into(),
+                retry_after: None,
+            }), // batch 2: auth, no retry
         ]);
         let svc = svc1(d, cancel.clone());
         let (_events, s) =
@@ -554,7 +596,12 @@ mod tests {
 
         assert!(s.aborted);
         assert!(!s.cancelled);
-        assert_eq!(s.errors.len(), 1, "only the auth error, no cancel noise: {:?}", s.errors);
+        assert_eq!(
+            s.errors.len(),
+            1,
+            "only the auth error, no cancel noise: {:?}",
+            s.errors
+        );
         assert_eq!(s.batches_processed, 1);
         let saved = load_folder_glossary(dir.path()).unwrap();
         assert_eq!(saved.characters.get("应欢欢").unwrap(), "Ying Huanhuan"); // existing preserved
@@ -583,7 +630,12 @@ mod tests {
         assert!(s.aborted);
         assert_eq!(s.batches_processed, 0);
         assert_eq!(s.batches_total, 3);
-        assert_eq!(s.errors.len(), 1, "queued-batch noise suppressed: {:?}", s.errors);
+        assert_eq!(
+            s.errors.len(),
+            1,
+            "queued-batch noise suppressed: {:?}",
+            s.errors
+        );
         assert!(s.errors[0].contains("auth error"), "{}", s.errors[0]);
     }
 
@@ -605,7 +657,14 @@ mod tests {
         std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(256);
-        build_glossary(job(dir.path(), vec!["e1.ass".into()], cancel), &svc, &svc, None, tx).await;
+        build_glossary(
+            job(dir.path(), vec!["e1.ass".into()], cancel),
+            &svc,
+            &svc,
+            None,
+            tx,
+        )
+        .await;
 
         // Restore BEFORE asserting so the tempdir can clean itself up.
         std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -622,14 +681,20 @@ mod tests {
             })
             .collect();
         assert_eq!(error_msgs.len(), 1, "exactly one Error event: {events:?}");
-        assert!(error_msgs[0].contains("could not save"), "{}", error_msgs[0]);
+        assert!(
+            error_msgs[0].contains("could not save"),
+            "{}",
+            error_msgs[0]
+        );
         assert!(
             error_msgs[0].contains("glossary.json"),
             "Error names the path: {}",
             error_msgs[0]
         );
         assert!(
-            !events.iter().any(|e| matches!(e, GlossaryEvent::Done { .. })),
+            !events
+                .iter()
+                .any(|e| matches!(e, GlossaryEvent::Done { .. })),
             "no Done after a final-save Error"
         );
         // The incremental save degraded to a path-bearing warning on the way.
@@ -655,8 +720,15 @@ mod tests {
             run_and_collect(job(dir.path(), vec!["e1.ass".into()], cancel), &svc, None).await;
         assert!(s.cancelled && !s.aborted);
         assert_eq!(s.batches_processed, 0);
-        assert!(s.errors.is_empty(), "cancel noise suppressed: {:?}", s.errors);
-        assert!(load_folder_glossary(dir.path()).is_none(), "nothing written");
+        assert!(
+            s.errors.is_empty(),
+            "cancel noise suppressed: {:?}",
+            s.errors
+        );
+        assert!(
+            load_folder_glossary(dir.path()).is_none(),
+            "nothing written"
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -667,7 +739,11 @@ mod tests {
         let d = ScriptedDriver::new(vec![]);
         let svc = svc1(d, cancel.clone());
         let (_events, s) = run_and_collect(
-            job(dir.path(), vec!["bad.ass".into(), "missing.ass".into()], cancel),
+            job(
+                dir.path(),
+                vec!["bad.ass".into(), "missing.ass".into()],
+                cancel,
+            ),
             &svc,
             None,
         )
@@ -730,7 +806,12 @@ mod tests {
         let (_events, s) =
             run_and_collect(job(dir.path(), vec!["e1.ass".into()], cancel), &svc, None).await;
 
-        assert_eq!(s.errors.len(), 1, "expected 1 error in summary: {:?}", s.errors);
+        assert_eq!(
+            s.errors.len(),
+            1,
+            "expected 1 error in summary: {:?}",
+            s.errors
+        );
         assert!(
             s.errors[0].starts_with("reference batch"),
             "error must start with 'reference batch': {:?}",
@@ -741,7 +822,10 @@ mod tests {
             "error must mention 'unparseable': {:?}",
             s.errors[0]
         );
-        assert_eq!(s.terms_final, 1, "the glossary build itself must be unaffected");
+        assert_eq!(
+            s.terms_final, 1,
+            "the glossary build itself must be unaffected"
+        );
         assert!(!s.aborted && !s.cancelled);
     }
 
@@ -749,7 +833,9 @@ mod tests {
     async fn normalize_runs_on_new_terms_and_merge_keeps_existing_wins() {
         let dir = tempfile::tempdir().unwrap();
         let mut existing = Glossary::new("xianxia");
-        existing.characters.insert("林动".into(), "EXISTING WINS".into());
+        existing
+            .characters
+            .insert("林动".into(), "EXISTING WINS".into());
         crate::glossary::io::save_folder_glossary(dir.path(), &existing).unwrap();
 
         write_ass(dir.path(), "e1.ass", &["一"]); // 1 batch
@@ -784,7 +870,9 @@ mod tests {
         let mut j = job(dir.path(), vec!["e1.ass".into()], cancel);
         j.prompts = prompts;
         let _ = run_and_collect(j, &svc, None).await;
-        let req = d.last_request().expect("extraction must have sent a request");
+        let req = d
+            .last_request()
+            .expect("extraction must have sent a request");
         assert!(
             req.system.starts_with("XEXTRACTX"),
             "custom extract template must reach the wire: {:?}",
@@ -831,9 +919,8 @@ mod tests {
         let cancel = CancellationToken::new();
 
         // Driver A: scripted for extraction only — returns one term.
-        let extract_driver = ScriptedDriver::new(vec![Ok(
-            r#"{"characters":{"林动":"lin dong"}}"#.into(),
-        )]);
+        let extract_driver =
+            ScriptedDriver::new(vec![Ok(r#"{"characters":{"林动":"lin dong"}}"#.into())]);
 
         // Driver B: scripted for normalization only — returns the corrected casing.
         let norm_driver = ScriptedDriver::new(vec![Ok(r#"{"林动":"Lin Dong"}"#.into())]);
@@ -861,8 +948,14 @@ mod tests {
             .expect("build must emit Done");
 
         // Extraction driver A received exactly the extraction call(s).
-        assert_eq!(extract_driver.call_count(), 1, "extraction driver must have been called once");
-        let extract_req = extract_driver.last_request().expect("extraction driver must have a recorded request");
+        assert_eq!(
+            extract_driver.call_count(),
+            1,
+            "extraction driver must have been called once"
+        );
+        let extract_req = extract_driver
+            .last_request()
+            .expect("extraction driver must have a recorded request");
         // The extraction system prompt starts with "You are a terminology extractor"
         // (from glossary.txt), NOT the normalize prompt.
         assert!(
@@ -872,8 +965,13 @@ mod tests {
         );
 
         // Normalization driver B received exactly the normalize call(s).
-        assert!(norm_driver.call_count() >= 1, "norm driver must have been called at least once");
-        let norm_req = norm_driver.last_request().expect("norm driver must have a recorded request");
+        assert!(
+            norm_driver.call_count() >= 1,
+            "norm driver must have been called at least once"
+        );
+        let norm_req = norm_driver
+            .last_request()
+            .expect("norm driver must have a recorded request");
         // The normalize system prompt starts with "You are normalizing"
         // (from glossary-normalize-characters.txt), NOT the extraction prompt.
         assert!(

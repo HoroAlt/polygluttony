@@ -20,9 +20,9 @@ use tokio::sync::mpsc;
 use anitranslate_core::ass::decode::decode_file;
 use anitranslate_core::config::languages::{detect_source_language, get_language};
 use anitranslate_core::config::presets::default_config;
-use anitranslate_core::config::projects::{FolderPrefs, ProjectsConfig, Tone, tone_for_world};
+use anitranslate_core::config::projects::{tone_for_world, FolderPrefs, ProjectsConfig, Tone};
 use anitranslate_core::config::store::{
-    CONFIG_FILE, has_usable_connection, load as load_config, save as save_config,
+    has_usable_connection, load as load_config, save as save_config, CONFIG_FILE,
 };
 use anitranslate_core::config::{AppConfig, Connection, Driver};
 use anitranslate_core::events::{LogLevel, LogPhase, RunEvent};
@@ -32,8 +32,8 @@ use anitranslate_core::glossary::world_detector::WorldType;
 use anitranslate_core::llm::service::LlmService;
 use anitranslate_core::models::language_pair::{output_filename, LanguagePair};
 use anitranslate_core::prompts::{self, TranslationPrompts};
-use anitranslate_core::translation::pipeline::{translate_file, FileJob};
 use anitranslate_core::translation::batching::MAX_RETRANSLATION_ATTEMPTS;
+use anitranslate_core::translation::pipeline::{translate_file, FileJob};
 use anitranslate_core::utils::discover::discover_source_files;
 
 #[derive(Parser, Debug)]
@@ -158,7 +158,16 @@ async fn main() -> ExitCode {
     }
 
     let result = match cli.cmd {
-        Cmd::Translate { source, target, folder, world, tone, concurrency, events, no_verify } => {
+        Cmd::Translate {
+            source,
+            target,
+            folder,
+            world,
+            tone,
+            concurrency,
+            events,
+            no_verify,
+        } => {
             cmd_translate(
                 &data_dir,
                 source,
@@ -172,9 +181,12 @@ async fn main() -> ExitCode {
             )
             .await
         }
-        Cmd::BuildGlossary { folder, target, world, force } => {
-            cmd_build_glossary(&data_dir, &folder, &target, world, force).await
-        }
+        Cmd::BuildGlossary {
+            folder,
+            target,
+            world,
+            force,
+        } => cmd_build_glossary(&data_dir, &folder, &target, world, force).await,
         Cmd::Inspect { folder } => cmd_inspect(&folder).await,
         Cmd::Config { path, show_active } => cmd_config(&data_dir, path, show_active).await,
     };
@@ -221,7 +233,10 @@ fn resolve_data_dir(override_path: Option<PathBuf>) -> Result<PathBuf> {
                 .join("Application Support")
                 .join("anitranslate"));
         }
-        return Ok(PathBuf::from(home).join(".local").join("share").join("anitranslate"));
+        return Ok(PathBuf::from(home)
+            .join(".local")
+            .join("share")
+            .join("anitranslate"));
     }
     anyhow::bail!("HOME is not set; pass --data-dir explicitly")
 }
@@ -254,12 +269,19 @@ async fn cmd_translate(
         eprintln!("no source subtitle files in {}", folder.display());
         return Ok(());
     }
-    eprintln!("discovered {} subtitle file(s) in {}", files.len(), folder.display());
+    eprintln!(
+        "discovered {} subtitle file(s) in {}",
+        files.len(),
+        folder.display()
+    );
 
     let cfg = load_or_seed_config(data_dir)?;
     let conn = match cfg.connections.get(&cfg.active_connection) {
         Some(c) => c.clone(),
-        None => anyhow::bail!("active connection '{}' not found in config", cfg.active_connection),
+        None => anyhow::bail!(
+            "active connection '{}' not found in config",
+            cfg.active_connection
+        ),
     };
     if !has_usable_connection(&cfg) {
         eprintln!(
@@ -273,7 +295,9 @@ async fn cmd_translate(
     let target = target.or_else(|| Some(cfg.default_target.clone()));
     let (source, target) = match (source, target) {
         (Some(s), Some(t)) => (s, t),
-        _ => anyhow::bail!("source and target languages are required (--source, --target, or in config)"),
+        _ => anyhow::bail!(
+            "source and target languages are required (--source, --target, or in config)"
+        ),
     };
     let pair = LanguagePair::from_codes(&source, &target)?;
     let detected_world: Option<WorldType> = world
@@ -452,7 +476,10 @@ async fn cmd_config(data_dir: &PathBuf, show_path: bool, show_active: bool) -> R
     println!("data dir: {}", data_dir.display());
     println!("config file: {}", data_dir.join(CONFIG_FILE).display());
     println!("active connection: {}", cfg.active_connection);
-    println!("default source: {} -> target: {}", cfg.default_source, cfg.default_target);
+    println!(
+        "default source: {} -> target: {}",
+        cfg.default_source, cfg.default_target
+    );
     for (name, c) in &cfg.connections {
         let usable = !c.api_key.trim().is_empty()
             || c.base_url.contains("localhost")
@@ -491,12 +518,9 @@ fn detect_world(folder: &PathBuf, files: &[PathBuf]) -> Option<String> {
 
 fn spawn_stdio_listener(rx: &mut tokio::sync::mpsc::Receiver<RunEvent>) {
     let _ = rx; // marker; events are forwarded inline below
-    // Placeholder: in production this would print line-buffered JSONL.
+                // Placeholder: in production this would print line-buffered JSONL.
 }
 
-fn spawn_file_listener(
-    rx: &mut tokio::sync::mpsc::Receiver<RunEvent>,
-    _path: &std::path::Path,
-) {
+fn spawn_file_listener(rx: &mut tokio::sync::mpsc::Receiver<RunEvent>, _path: &std::path::Path) {
     let _ = rx;
 }

@@ -40,8 +40,11 @@ pub fn compute_scopes(
     let file_end = *all_line_ids.last().unwrap();
 
     // Passing samples = sampled minus failed.
-    let passed: BTreeSet<u32> =
-        sampled_ids.iter().copied().filter(|id| !failed_ids.contains(id)).collect();
+    let passed: BTreeSet<u32> = sampled_ids
+        .iter()
+        .copied()
+        .filter(|id| !failed_ids.contains(id))
+        .collect();
 
     // Edge case: all samples failed → full-file scope.
     if passed.is_empty() {
@@ -135,7 +138,11 @@ pub fn is_full_file(scopes: &[Scope], all_line_ids: &[u32]) -> bool {
     }
     let covered = all_line_ids
         .iter()
-        .filter(|id| scopes.iter().any(|s| s.start_line <= **id && **id <= s.end_line))
+        .filter(|id| {
+            scopes
+                .iter()
+                .any(|s| s.start_line <= **id && **id <= s.end_line)
+        })
         .count();
     covered as f64 / all_line_ids.len() as f64 >= FULL_RETRANSLATION_THRESHOLD
 }

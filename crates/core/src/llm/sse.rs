@@ -34,7 +34,11 @@ where
         let retry_after = super::retry_after_secs(resp.headers());
         let body = resp.text().await.unwrap_or_default();
         let snippet: String = body.chars().take(500).collect();
-        return Err(LlmError::Http { status: status.as_u16(), body: snippet, retry_after });
+        return Err(LlmError::Http {
+            status: status.as_u16(),
+            body: snippet,
+            retry_after,
+        });
     }
     let mut stream = resp.bytes_stream().eventsource();
     while let Some(ev) = stream.next().await {

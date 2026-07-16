@@ -18,8 +18,7 @@ pub fn strip_for_text(s: &str) -> String {
 /// Note: positions are tracked in CHARS (not bytes) unlike Python's `original_position`
 /// which is a code-point (character) offset from `match.start()`. Both yield the same result for stripped_position
 /// because Python's `_calculate_stripped_position` also slices by chars via str indexing.
-static TAG: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"\{\\[^}]+\}").unwrap());
+static TAG: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"\{\\[^}]+\}").unwrap());
 
 /// One override tag with where it sat in the original and stripped text.
 /// Positions are in CHARS (not bytes) — translations are sliced by chars.
@@ -112,7 +111,10 @@ mod tests {
 
     #[test]
     fn strips_override_blocks() {
-        assert_eq!(strip_for_text("{\\pos(1,2)\\an5}Episode Title"), "Episode Title");
+        assert_eq!(
+            strip_for_text("{\\pos(1,2)\\an5}Episode Title"),
+            "Episode Title"
+        );
         assert_eq!(strip_for_text("{\\i1}斜体{\\i0}文字"), "斜体文字");
         assert_eq!(strip_for_text("plain text"), "plain text");
     }

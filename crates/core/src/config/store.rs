@@ -101,10 +101,7 @@ fn is_localhost_url(url: &str) -> bool {
         .find(|c: char| c == '/' || c == ':' || c == '?' || c == '#')
         .unwrap_or(prefix.len());
     let host = &prefix[..host_end];
-    host == "localhost"
-        || host == "127.0.0.1"
-        || host == "[::1]"
-        || host == "::1"
+    host == "localhost" || host == "127.0.0.1" || host == "[::1]" || host == "::1"
 }
 
 pub fn has_usable_connection(cfg: &AppConfig) -> bool {
@@ -149,15 +146,24 @@ fn config_path(data_dir: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{Driver};
+    use crate::config::Driver;
 
     fn sample() -> Connection {
         Connection {
-            driver: Driver::Openai, base_url: "u".into(), api_key: "k".into(),
-            model: "m".into(), max_tokens: None, batch_dialogue_limit: None,
-            timeout: None, connect_timeout: None, concurrency: None,
-            thinking_enabled: None, thinking_budget: None, thinking_glossary_budget: None,
-            thinking_glossary_norm_budget: None, web_search: None,
+            driver: Driver::Openai,
+            base_url: "u".into(),
+            api_key: "k".into(),
+            model: "m".into(),
+            max_tokens: None,
+            batch_dialogue_limit: None,
+            timeout: None,
+            connect_timeout: None,
+            concurrency: None,
+            thinking_enabled: None,
+            thinking_budget: None,
+            thinking_glossary_budget: None,
+            thinking_glossary_norm_budget: None,
+            web_search: None,
         }
     }
 
@@ -220,11 +226,19 @@ mod tests {
     #[test]
     fn connection_is_usable_rules() {
         let mut c = Connection {
-            driver: Driver::Openai, base_url: "https://api.example.com".into(),
-            api_key: String::new(), model: "m".into(), max_tokens: None,
-            batch_dialogue_limit: None, timeout: None, connect_timeout: None,
-            concurrency: None, thinking_enabled: None, thinking_budget: None,
-            thinking_glossary_budget: None, thinking_glossary_norm_budget: None,
+            driver: Driver::Openai,
+            base_url: "https://api.example.com".into(),
+            api_key: String::new(),
+            model: "m".into(),
+            max_tokens: None,
+            batch_dialogue_limit: None,
+            timeout: None,
+            connect_timeout: None,
+            concurrency: None,
+            thinking_enabled: None,
+            thinking_budget: None,
+            thinking_glossary_budget: None,
+            thinking_glossary_norm_budget: None,
             web_search: None,
         };
         assert!(!connection_is_usable(&c));

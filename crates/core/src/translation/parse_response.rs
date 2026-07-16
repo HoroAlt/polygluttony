@@ -15,8 +15,7 @@ pub struct ResponseParseError(pub String);
 static FENCE_OPEN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^```(?:json)?\s*\n?").unwrap());
 static FENCE_CLOSE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n?```\s*$").unwrap());
-static TRAILING_COMMA: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r",(\s*[}\]])").unwrap());
+static TRAILING_COMMA: LazyLock<Regex> = LazyLock::new(|| Regex::new(r",(\s*[}\]])").unwrap());
 static ARRAY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)\[.*\]").unwrap());
 static OBJECT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)\{.*\}").unwrap());
 
@@ -58,8 +57,16 @@ pub fn extract_pairs(raw: &str) -> Result<Vec<LinePair>, ResponseParseError> {
             };
             Some(LinePair {
                 id,
-                src: item.get("src").and_then(|s| s.as_str()).unwrap_or_default().to_string(),
-                tgt: item.get("tgt").and_then(|s| s.as_str()).unwrap_or_default().to_string(),
+                src: item
+                    .get("src")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                tgt: item
+                    .get("tgt")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
             })
         })
         .collect())

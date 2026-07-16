@@ -53,8 +53,14 @@ impl DialogueLine {
 /// timestamp shouldn't drop an otherwise-valid dialogue line.
 pub fn parse_timestamp_cs(ts: &str) -> i64 {
     let mut parts = ts.trim().split(':');
-    let h: i64 = parts.next().and_then(|s| s.trim().parse().ok()).unwrap_or(0);
-    let m: i64 = parts.next().and_then(|s| s.trim().parse().ok()).unwrap_or(0);
+    let h: i64 = parts
+        .next()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
+    let m: i64 = parts
+        .next()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
     let sec = parts.next().unwrap_or("0").trim();
     let (s, cs) = match sec.split_once('.') {
         Some((s, frac)) => {
@@ -155,7 +161,10 @@ Dialogue: 0,0:00:06.00,0:00:09.00,Default,,0,0,0,,{\\i1}第一集{\\i0}
     #[test]
     fn parses_timestamp_to_centiseconds() {
         assert_eq!(parse_timestamp_cs("0:00:01.50"), 150);
-        assert_eq!(parse_timestamp_cs("1:02:03.04"), (3600 + 2 * 60 + 3) * 100 + 4);
+        assert_eq!(
+            parse_timestamp_cs("1:02:03.04"),
+            (3600 + 2 * 60 + 3) * 100 + 4
+        );
         assert_eq!(parse_timestamp_cs("0:00:00.5"), 50);
     }
 
@@ -174,7 +183,10 @@ Dialogue: 0,0:00:06.00,0:00:09.00,Default,,0,0,0,,{\\i1}第一集{\\i0}
     #[test]
     fn formats_timestamps_back() {
         assert_eq!(format_timestamp_cs(0), "0:00:00.00");
-        assert_eq!(format_timestamp_cs(parse_timestamp_cs("1:02:03.45")), "1:02:03.45");
+        assert_eq!(
+            format_timestamp_cs(parse_timestamp_cs("1:02:03.45")),
+            "1:02:03.45"
+        );
     }
 
     #[test]

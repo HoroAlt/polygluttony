@@ -34,7 +34,10 @@ pub enum BatchOutcome {
     /// All lines translated; map id → marker-free text.
     Success(BTreeMap<u32, String>),
     /// Validation broke at `failed_from`; everything before it is salvaged.
-    Partial { translated: BTreeMap<u32, String>, failed_from: u32 },
+    Partial {
+        translated: BTreeMap<u32, String>,
+        failed_from: u32,
+    },
     /// Nothing usable (transport error after retries, hopeless JSON).
     Failure(String),
     /// Auth error (401/403/404) — the whole run is doomed; the pipeline must
@@ -51,8 +54,11 @@ pub async fn translate_batch(
     settings: &BatchSettings,
 ) -> BatchOutcome {
     // Join with \n (Python uses space — no effect on substring glossary matching).
-    let batch_content: String =
-        lines.iter().map(|l| l.stripped_src.as_str()).collect::<Vec<_>>().join("\n");
+    let batch_content: String = lines
+        .iter()
+        .map(|l| l.stripped_src.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
     let filtered = glossary.filter_for_batch(&batch_content);
 
     // Markers + hints (`batch_translator.py:240-246`).
@@ -62,12 +68,21 @@ pub async fn translate_batch(
     // final string shape.
     let marked: Vec<(u32, String)> = lines
         .iter()
-        .map(|l| (l.id, markers::inject(l.id, l.kind, &filtered.inject_hints(&l.stripped_src))))
+        .map(|l| {
+            (
+                l.id,
+                markers::inject(l.id, l.kind, &filtered.inject_hints(&l.stripped_src)),
+            )
+        })
         .collect();
 
-    let system =
-        tp::system_prompt(&settings.template, &settings.pair, &filtered, &settings.tone_text);
-        let user = tp::user_prompt(&marked, context);
+    let system = tp::system_prompt(
+        &settings.template,
+        &settings.pair,
+        &filtered,
+        &settings.tone_text,
+    );
+    let user = tp::user_prompt(&marked, context);
 
     let resp = match svc.request(LlmRequest { system, user }).await {
         Ok(r) => r,
@@ -112,10 +127,13 @@ pub async fn translate_batch(
 
     match first_problem {
         None => BatchOutcome::Success(translated),
-        Some(cut) if translated.is_empty() => {
-            BatchOutcome::Failure(format!("validation failed from id {cut}, nothing salvageable"))
-        }
-        Some(cut) => BatchOutcome::Partial { translated, failed_from: cut },
+        Some(cut) if translated.is_empty() => BatchOutcome::Failure(format!(
+            "validation failed from id {cut}, nothing salvageable"
+        )),
+        Some(cut) => BatchOutcome::Partial {
+            translated,
+            failed_from: cut,
+        },
     }
 }
 
@@ -130,8 +148,10 @@ pub async fn translate_batch_tagged(
     settings: &BatchSettings,
 ) -> BatchOutcome {
     use crate::ass::tags;
-    let strips: BTreeMap<u32, tags::TagStrip> =
-        raw.iter().map(|(id, text)| (*id, tags::strip_positional(text))).collect();
+    let strips: BTreeMap<u32, tags::TagStrip> = raw
+        .iter()
+        .map(|(id, text)| (*id, tags::strip_positional(text)))
+        .collect();
     let lines: Vec<BatchLine> = raw
         .iter()
         .map(|(id, _text)| {
@@ -140,25 +160,38 @@ pub async fn translate_batch_tagged(
             // text is non-empty AND a tag contains \pos or \an.  Pure-tag lines
             // (e.g. `{\an8}` alone) stay Dialogue.
             let kind = if !strip.stripped.trim().is_empty()
-                && strip.tags.iter().any(|t| t.content.contains(r"\pos") || t.content.contains(r"\an"))
+                && strip
+                    .tags
+                    .iter()
+                    .any(|t| t.content.contains(r"\pos") || t.content.contains(r"\an"))
             {
                 LineKind::Label
             } else {
                 LineKind::Dialogue
             };
-            BatchLine { id: *id, kind, stripped_src: strip.stripped.clone() }
+            BatchLine {
+                id: *id,
+                kind,
+                stripped_src: strip.stripped.clone(),
+            }
         })
         .collect();
 
     let reapply = |map: BTreeMap<u32, String>| -> BTreeMap<u32, String> {
-        map.into_iter().map(|(id, t)| (id, tags::reapply(&strips[&id], &t))).collect()
+        map.into_iter()
+            .map(|(id, t)| (id, tags::reapply(&strips[&id], &t)))
+            .collect()
     };
 
     match translate_batch(svc, &lines, glossary, context, settings).await {
         BatchOutcome::Success(m) => BatchOutcome::Success(reapply(m)),
-        BatchOutcome::Partial { translated, failed_from } => {
-            BatchOutcome::Partial { translated: reapply(translated), failed_from }
-        }
+        BatchOutcome::Partial {
+            translated,
+            failed_from,
+        } => BatchOutcome::Partial {
+            translated: reapply(translated),
+            failed_from,
+        },
         f => f, // Failure / Fatal pass through
     }
 }
@@ -231,7 +264,10 @@ mod tests {
         )
         .await;
         match out {
-            BatchOutcome::Partial { translated, failed_from } => {
+            BatchOutcome::Partial {
+                translated,
+                failed_from,
+            } => {
                 assert_eq!(translated.get(&1).unwrap(), "Hello");
                 assert_eq!(failed_from, 2);
             }
@@ -243,9 +279,14 @@ mod tests {
     async fn unparseable_json_is_a_failure() {
         // One response is enough: parse errors are not transport-retried.
         let svc = service(vec!["sorry, no"]);
-        let out =
-            translate_batch(&svc, &lines(&[(1, "你好")]), &Glossary::default(), &[], &settings())
-                .await;
+        let out = translate_batch(
+            &svc,
+            &lines(&[(1, "你好")]),
+            &Glossary::default(),
+            &[],
+            &settings(),
+        )
+        .await;
         assert!(matches!(out, BatchOutcome::Failure(_)));
     }
 
@@ -258,9 +299,14 @@ mod tests {
         })]);
         let (tx, _rx) = tokio::sync::mpsc::channel(64);
         let svc = LlmService::new(driver, 2, CancellationToken::new(), tx);
-        let out =
-            translate_batch(&svc, &lines(&[(1, "你好")]), &Glossary::default(), &[], &settings())
-                .await;
+        let out = translate_batch(
+            &svc,
+            &lines(&[(1, "你好")]),
+            &Glossary::default(),
+            &[],
+            &settings(),
+        )
+        .await;
         assert!(matches!(out, BatchOutcome::Fatal(_)));
     }
 
@@ -269,7 +315,7 @@ mod tests {
         let mut g = Glossary::new("xianxia");
         g.characters.insert("星汉".into(), "Xinghan".into());
         let driver = ScriptedDriver::new(vec![Ok(
-            r#"[{"id":1,"tgt":"<0001:D> Xinghan, hello"}]"#.to_string(),
+            r#"[{"id":1,"tgt":"<0001:D> Xinghan, hello"}]"#.to_string()
         )]);
         let (tx, _rx) = tokio::sync::mpsc::channel(64);
         let svc = LlmService::new(driver.clone(), 2, CancellationToken::new(), tx);
@@ -281,9 +327,8 @@ mod tests {
 
     #[tokio::test]
     async fn custom_template_reaches_the_request() {
-        let driver = ScriptedDriver::new(vec![Ok(
-            r#"[{"id":1,"tgt":"<0001:D> Hello"}]"#.to_string(),
-        )]);
+        let driver =
+            ScriptedDriver::new(vec![Ok(r#"[{"id":1,"tgt":"<0001:D> Hello"}]"#.to_string())]);
         let (tx, _rx) = tokio::sync::mpsc::channel(64);
         let svc = LlmService::new(driver.clone(), 2, CancellationToken::new(), tx);
         let settings = BatchSettings {
@@ -291,20 +336,41 @@ mod tests {
             template: "XCUSTOMX {GLOSSARY} {TONE}".into(),
             tone_text: "XTONEX".into(),
         };
-        let _ = translate_batch(&svc, &lines(&[(1, "你好")]), &Glossary::default(), &[], &settings).await;
+        let _ = translate_batch(
+            &svc,
+            &lines(&[(1, "你好")]),
+            &Glossary::default(),
+            &[],
+            &settings,
+        )
+        .await;
         let req = driver.last_request().expect("a request was sent");
-        assert!(req.system.starts_with("XCUSTOMX"), "system starts with XCUSTOMX: {:?}", req.system);
-        assert!(req.system.contains("XTONEX"), "system contains XTONEX: {:?}", req.system);
+        assert!(
+            req.system.starts_with("XCUSTOMX"),
+            "system starts with XCUSTOMX: {:?}",
+            req.system
+        );
+        assert!(
+            req.system.contains("XTONEX"),
+            "system contains XTONEX: {:?}",
+            req.system
+        );
     }
 
     #[tokio::test]
     async fn tagged_partial_reapplies_tags_to_salvaged_prefix() {
         // id 2 missing from response → Partial; id 1's tag must still be reapplied.
         let svc = service(vec![r#"[{"id":1,"tgt":"<0001:D> Hello"}]"#]);
-        let raw = vec![(1u32, r"{\an8}你好".to_string()), (2u32, "再见".to_string())];
+        let raw = vec![
+            (1u32, r"{\an8}你好".to_string()),
+            (2u32, "再见".to_string()),
+        ];
         let out = translate_batch_tagged(&svc, &raw, &Glossary::default(), &[], &settings()).await;
         match out {
-            BatchOutcome::Partial { translated, failed_from } => {
+            BatchOutcome::Partial {
+                translated,
+                failed_from,
+            } => {
                 assert_eq!(translated.get(&1).unwrap(), r"{\an8}Hello");
                 assert_eq!(failed_from, 2);
             }
@@ -316,8 +382,7 @@ mod tests {
     async fn tags_are_reapplied_to_translations() {
         let svc = service(vec![r#"[{"id":1,"tgt":"<0001:D> Hello"}]"#]);
         let raw = vec![(1u32, r"{\an8}你好".to_string())];
-        let out =
-            translate_batch_tagged(&svc, &raw, &Glossary::default(), &[], &settings()).await;
+        let out = translate_batch_tagged(&svc, &raw, &Glossary::default(), &[], &settings()).await;
         match out {
             BatchOutcome::Success(map) => assert_eq!(map.get(&1).unwrap(), r"{\an8}Hello"),
             other => panic!("expected success, got {other:?}"),

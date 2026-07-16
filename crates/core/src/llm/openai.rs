@@ -7,8 +7,11 @@ use serde_json::{json, Value};
 
 use crate::config::Connection;
 use crate::llm::error::LlmError;
-use crate::llm::{base_of, client_for, get_json, parse_model_ids, post_json, timeout_of, LlmDriver, LlmRequest, LlmResponse, Usage};
 use crate::llm::sse;
+use crate::llm::{
+    base_of, client_for, get_json, parse_model_ids, post_json, timeout_of, LlmDriver, LlmRequest,
+    LlmResponse, Usage,
+};
 
 pub struct OpenAiDriver {
     conn: Connection,
@@ -48,7 +51,14 @@ impl LlmDriver for OpenAiDriver {
     async fn complete(&self, system: &str, user: &str) -> Result<String, LlmError> {
         let url = format!("{}/chat/completions", base_of(&self.conn));
         let body = self.build_body(system, user);
-        let data = post_json(&self.client, &url, self.headers(), &body, timeout_of(&self.conn)).await?;
+        let data = post_json(
+            &self.client,
+            &url,
+            self.headers(),
+            &body,
+            timeout_of(&self.conn),
+        )
+        .await?;
         let text = data
             .pointer("/choices/0/message/content")
             .and_then(Value::as_str)
@@ -76,7 +86,9 @@ impl LlmDriver for OpenAiDriver {
                 // Provider error object embedded in a chunk.
                 if v.get("error").is_some() {
                     let snippet: String = v.to_string().chars().take(500).collect();
-                    return Err(LlmError::Transport(format!("provider stream error: {snippet}")));
+                    return Err(LlmError::Transport(format!(
+                        "provider stream error: {snippet}"
+                    )));
                 }
                 if let Some(t) = v["choices"][0]["delta"]["content"].as_str() {
                     text.push_str(t);
@@ -124,11 +136,19 @@ mod tests {
 
     fn conn(base: &str) -> Connection {
         Connection {
-            driver: Driver::Openai, base_url: base.into(), api_key: "k".into(),
-            model: "gpt-x".into(), max_tokens: Some(16), batch_dialogue_limit: None,
-            timeout: Some(10), connect_timeout: None, concurrency: None,
-            thinking_enabled: None, thinking_budget: None,
-            thinking_glossary_budget: None, thinking_glossary_norm_budget: None,
+            driver: Driver::Openai,
+            base_url: base.into(),
+            api_key: "k".into(),
+            model: "gpt-x".into(),
+            max_tokens: Some(16),
+            batch_dialogue_limit: None,
+            timeout: Some(10),
+            connect_timeout: None,
+            concurrency: None,
+            thinking_enabled: None,
+            thinking_budget: None,
+            thinking_glossary_budget: None,
+            thinking_glossary_norm_budget: None,
             web_search: None,
         }
     }
@@ -158,7 +178,10 @@ mod tests {
             })))
             .mount(&server)
             .await;
-        let models = OpenAiDriver::new(conn(&server.uri())).list_models().await.unwrap();
+        let models = OpenAiDriver::new(conn(&server.uri()))
+            .list_models()
+            .await
+            .unwrap();
         assert_eq!(models, vec!["gpt-5.2", "gpt-4.1"]);
     }
 
@@ -184,7 +207,10 @@ mod tests {
             .await;
         let driver = OpenAiDriver::new(conn(&server.uri()));
         let resp = driver
-            .stream(&LlmRequest { system: "s".into(), user: "u".into() })
+            .stream(&LlmRequest {
+                system: "s".into(),
+                user: "u".into(),
+            })
             .await
             .unwrap();
         assert_eq!(resp.text, "HiHi");
